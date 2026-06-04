@@ -166,7 +166,7 @@ class ApiController
 
     public static function workerStatus(): string
     {
-        $running = !empty(trim(shell_exec("pgrep -f 'tfsigner/worker' 2>/dev/null") ?: ""));
+        $running = !empty(trim(shell_exec("pgrep -f 'worker.php' 2>/dev/null") ?: ""));
         return Router::json(['running' => $running]);
     }
 
@@ -178,7 +178,7 @@ class ApiController
         
         $stats += ['pending' => 0, 'processing' => 0, 'completed' => 0, 'failed' => 0];
         $apps = $pdo->query("SELECT COUNT(*) FROM apps")->fetchColumn();
-        $workerRunning = !empty(trim(shell_exec("pgrep -f 'tfsigner/worker' 2>/dev/null") ?: ""));
+        $workerRunning = !empty(trim(shell_exec("pgrep -f 'worker.php' 2>/dev/null") ?: ""));
         
         // Expiry alerts
         $alerts = [];

@@ -38,7 +38,7 @@ $router = new Router();
 // === Auth middleware (skip for login page, API, and download) ===
 $router->addMiddleware(function () {
     $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-    $publicPaths = ['/login', '/api/health', '/api/tasks/', '/api/settings', '/download/'];
+    $publicPaths = ['/login', '/api/health', '/api/tasks/', '/api/worker-status', '/download/'];
     foreach ($publicPaths as $p) {
         if (strpos($uri, $p) === 0) return;
     }
@@ -154,8 +154,8 @@ $router->get('/api/apps', [ApiController::class, 'listApps']);
 $router->get('/api/profiles', [ApiController::class, 'listProfiles']);
 $router->post('/api/profiles/upload', [ApiController::class, 'uploadProfile']);
 $router->post('/api/ipa/parse', [ApiController::class, 'parseIpa']);
-$router->get('/api/settings', [ApiController::class, 'getSettings']);
-$router->post('/api/settings', [ApiController::class, 'saveSettings']);
+$router->get('/api/worker-status', [ApiController::class, 'getSettings']);
+$router->post('/api/worker-status', [ApiController::class, 'saveSettings']);
 $router->get('/api/worker-status', [ApiController::class, 'workerStatus']);
 $router->get('/api/dashboard-stats', [ApiController::class, 'dashboardStats']);
 
