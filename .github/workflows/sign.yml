@@ -1,0 +1,95 @@
+name: 🚀 签名并上传 App Store
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "服务器任务 ID"
+        required: true
+      ipa_url:
+        description: "IPA 下载地址"
+        required: true
+      cert_url:
+        description: "证书 .pem 下载地址"
+        required: true
+      key_url:
+        description: "私钥 .key 下载地址"
+        required: true
+      profile_url:
+        description: "描述文件下载地址"
+        required: true
+      bundle_id:
+        description: "Bundle ID"
+        required: true
+      key_password:
+        description: "证书密码"
+        required: false
+        default: ""
+
+jobs:
+  sign_and_upload:
+    runs-on: macos-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: 📥 下载文件
+        run: |
+          curl -sLo app.ipa "${{ inputs.ipa_url }}"
+          curl -sLo cert.pem "${{ inputs.cert_url }}"
+          curl -sLo key.pem "${{ inputs.key_url }}"
+          curl -sLo profile.mobileprovision "${{ inputs.profile_url }}"
+          ls -lh app.ipa cert.pem key.pem profile.mobileprovision
+
+      - name: 💡 合并证书为 p12
+        run: |
+          openssl pkcs12 -export \
+            -in cert.pem -inkey key.pem \
+            -out cert.p12 \
+            -passout pass:${{ inputs.key_password || "temp123" }}
+
+      - name: 🔑 导入钥匙串
+        run: |
+          security create-keychain -p temp123 build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p temp123 build.keychain
+          security import cert.p12 -k build.keychain -P "${{ inputs.key_password || "temp123" }}" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k temp123 build.keychain
+
+      - name: ✍️ 重签名
+        run: |
+          rm -rf Payload
+          unzip -q app.ipa
+          APP=$(ls -d Payload/*.app | head -1)
+          cp profile.mobileprovision "$APP/embedded.mobileprovision"
+          security cms -D -i profile.mobileprovision > profile.plist
+          /usr/libexec/PlistBuddy -x -c "Print Entitlements" profile.plist > entitlements.plist
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${{ inputs.bundle_id }}" "$APP/Info.plist" 2>/dev/null || true
+          for fw in "$APP/Frameworks/"*.framework "$APP/PlugIns/"*.appex; do
+            [ -d "$fw" ] || continue
+            /usr/bin/codesign --force --sign - --timestamp=none "$fw" 2>/dev/null || true
+          done
+          /usr/bin/codesign --force --sign - --entitlements entitlements.plist --timestamp=none "$APP"
+          rm -f signed.ipa
+          zip -qr signed.ipa Payload
+          echo "签名完成"
+
+      - name: 📤 上传 App Store
+        run: |
+          xcrun altool --upload-app -f signed.ipa -t ios \
+            -u "${{ secrets.APPLE_ID }}" \
+            -p "${{ secrets.APPLE_PASSWORD }}" \
+            --output-format json
+
+      - name: 📢 通知服务器 - 成功
+        if: success()
+        run: |
+          curl -s -X POST "http://38.246.249.155:8088/api/tasks/${{ inputs.task_id }}/callback" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"completed","result":"已签名并上传 App Store Connect ✅"}'
+
+      - name: ❌ 通知服务器 - 失败
+        if: failure()
+        run: |
+          curl -s -X POST "http://38.246.249.155:8088/api/tasks/${{ inputs.task_id }}/callback" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"failed","error":"GitHub Actions 签名或上传失败"}'
