@@ -85,14 +85,13 @@ class ApiController
     public static function listProfiles(): string
     {
         $pdo = Database::connection();
-        $profiles = $pdo->query("
+        return Router::json($pdo->query("
             SELECT pp.*, a.name as app_name, c.name as cert_name 
             FROM provisioning_profiles pp 
             LEFT JOIN apps a ON pp.app_id = a.id 
             LEFT JOIN certificates c ON pp.cert_id = c.id 
             ORDER BY pp.created_at DESC
-        ")->fetchAll();
-        return Router::json($profiles);
+        ")->fetchAll());
     }
 
     public static function uploadProfile(): string
@@ -110,23 +109,112 @@ class ApiController
         $profilePath = $uploadDir . '/' . $destName;
         move_uploaded_file($_FILES['profile_file']['tmp_name'], $profilePath);
 
-        // Try to extract bundle_id from profile
         $bundleId = '';
         $content = file_get_contents($profilePath);
         if (preg_match('/<key>application-identifier<\/key>\s*<string>(.+?)<\/string>/s', $content, $m)) {
             $parts = explode('.', $m[1]);
             $bundleId = $parts[1] ?? $m[1];
         }
-        if (empty($bundleId)) {
-            if (preg_match('/<key>Name<\/key>\s*<string>(.+?)<\/string>/s', $content, $m)) {
-                $bundleId = $m[1];
-            }
-        }
 
         $pdo = Database::connection();
         $stmt = $pdo->prepare("INSERT INTO provisioning_profiles (app_id, cert_id, name, uuid, profile_path, bundle_id, profile_type) VALUES (?, ?, ?, '', ?, ?, 'app-store')");
         $stmt->execute([$appId, $certId, $name, $profilePath, $bundleId]);
         return Router::json(['success' => true, 'id' => $pdo->lastInsertId(), 'bundle_id' => $bundleId]);
+    }
+
+    public static function parseIpa(): string
+    {
+        if (empty($_FILES['ipa_file'])) {
+            return Router::json(['error' => 'IPA file required'], 400);
+        }
+
+        $tmpFile = $_FILES['ipa_file']['tmp_name'];
+        $fileSize = filesize($tmpFile);
+        if ($fileSize > 500 * 1024 * 1024) {
+            return Router::json(['error' => 'IPA too large (max 500MB)'], 400);
+        }
+
+        $zip = new \ZipArchive();
+        if ($zip->open($tmpFile) !== true) {
+            return Router::json(['error' => 'Invalid IPA file'], 400);
+        }
+
+        // Find Info.plist inside Payload/*.app
+        $infoPlist = null;
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $name = $zip->getNameIndex($i);
+            if (preg_match('#^Payload/[^/]+\.app/Info\.plist$#', $name)) {
+                $infoPlist = $zip->getFromIndex($i);
+                break;
+            }
+        }
+        $zip->close();
+
+        if (!$infoPlist) {
+            return Router::json(['error' => 'Info.plist not found in IPA'], 400);
+        }
+
+        // Parse plist (binary or XML)
+        $data = [];
+        $tmpPlist = sys_get_temp_dir() . '/tfsigner_plist_' . uniqid();
+        file_put_contents($tmpPlist, $infoPlist);
+
+        if (PHP_OS_FAMILY === 'Darwin') {
+            $json = shell_exec("plutil -convert json -o - " . escapeshellarg($tmpPlist) . " 2>/dev/null");
+            if ($json) $data = json_decode($json, true) ?: [];
+        }
+
+        if (empty($data)) {
+            // Simple XML plist fallback
+            if (preg_match('/<key>CFBundleName<\/key>\s*<string>(.+?)<\/string>/s', $infoPlist, $m)) $data['CFBundleName'] = $m[1];
+            if (preg_match('/<key>CFBundleDisplayName<\/key>\s*<string>(.+?)<\/string>/s', $infoPlist, $m)) $data['CFBundleDisplayName'] = $m[1];
+            if (preg_match('/<key>CFBundleIdentifier<\/key>\s*<string>(.+?)<\/string>/s', $infoPlist, $m)) $data['CFBundleIdentifier'] = $m[1];
+            if (preg_match('/<key>CFBundleShortVersionString<\/key>\s*<string>(.+?)<\/string>/s', $infoPlist, $m)) $data['CFBundleShortVersionString'] = $m[1];
+            if (preg_match('/<key>CFBundleVersion<\/key>\s*<string>(.+?)<\/string>/s', $infoPlist, $m)) $data['CFBundleVersion'] = $m[1];
+            if (preg_match('/<key>MinimumOSVersion<\/key>\s*<string>(.+?)<\/string>/s', $infoPlist, $m)) $data['MinimumOSVersion'] = $m[1];
+        }
+
+        @unlink($tmpPlist);
+
+        return Router::json([
+            'success' => true,
+            'file_size' => round($fileSize / 1024 / 1024, 2) . ' MB',
+            'name' => $data['CFBundleDisplayName'] ?? $data['CFBundleName'] ?? 'Unknown',
+            'bundle_id' => $data['CFBundleIdentifier'] ?? '',
+            'version' => $data['CFBundleShortVersionString'] ?? '',
+            'build' => $data['CFBundleVersion'] ?? '',
+            'min_os' => $data['MinimumOSVersion'] ?? '',
+        ]);
+    }
+
+    public static function getSettings(): string
+    {
+        $pdo = Database::connection();
+        $settings = [];
+        foreach ($pdo->query("SELECT * FROM settings") as $row) {
+            $settings[$row['key']] = $row['value'];
+        }
+        // Merge with config defaults
+        $defaults = [
+            'apple_id' => '',
+            'github_token' => Config::get('github.token', ''),
+            'webhook_url' => Config::get('webhook.url', ''),
+            'webhook_secret' => Config::get('webhook.secret', ''),
+        ];
+        return Router::json(array_merge($defaults, $settings));
+    }
+
+    public static function saveSettings(): string
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (!$input) return Router::json(['error' => 'Invalid input'], 400);
+
+        $pdo = Database::connection();
+        foreach ($input as $key => $value) {
+            $pdo->prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))")
+                ->execute([$key, $value]);
+        }
+        return Router::json(['success' => true]);
     }
 
     public static function taskCallback(int $id): string
