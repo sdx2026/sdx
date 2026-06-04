@@ -46,6 +46,8 @@ $payload = [
         "key_url" => $baseUrl . "/download/" . basename($cert["key_path"]),
         "profile_url" => $baseUrl . "/download/" . basename($profile["profile_path"]),
         "bundle_id" => $task["bundle_id"] ?? "",
+        "apple_id" => $task["apple_id"] ?? "",
+        "apple_password" => $task["app_password"] ?? "",
         "key_password" => $cert["password"] ?? "",
     ],
 ];

@@ -10,10 +10,10 @@ on:
         description: "IPA 下载地址"
         required: true
       cert_url:
-        description: "证书 .pem 下载地址"
+        description: "证书下载地址"
         required: true
       key_url:
-        description: "私钥 .key 下载地址"
+        description: "私钥下载地址"
         required: true
       profile_url:
         description: "描述文件下载地址"
@@ -21,10 +21,12 @@ on:
       bundle_id:
         description: "Bundle ID"
         required: true
-      key_password:
-        description: "证书密码"
-        required: false
-        default: ""
+      apple_id:
+        description: "Apple ID"
+        required: true
+      apple_password:
+        description: "App 专用密码"
+        required: true
 
 jobs:
   sign_and_upload:
@@ -38,21 +40,22 @@ jobs:
           curl -sLo cert.pem "${{ inputs.cert_url }}"
           curl -sLo key.pem "${{ inputs.key_url }}"
           curl -sLo profile.mobileprovision "${{ inputs.profile_url }}"
+          echo "文件下载完成"
           ls -lh app.ipa cert.pem key.pem profile.mobileprovision
 
-      - name: 💡 合并证书为 p12
+      - name: 💡 合并证书
         run: |
           openssl pkcs12 -export \
             -in cert.pem -inkey key.pem \
             -out cert.p12 \
-            -passout pass:${{ inputs.key_password || "temp123" }}
+            -passout pass:temp123
 
       - name: 🔑 导入钥匙串
         run: |
           security create-keychain -p temp123 build.keychain
           security default-keychain -s build.keychain
           security unlock-keychain -p temp123 build.keychain
-          security import cert.p12 -k build.keychain -P "${{ inputs.key_password || "temp123" }}" -T /usr/bin/codesign
+          security import cert.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k temp123 build.keychain
 
       - name: ✍️ 重签名
@@ -76,8 +79,8 @@ jobs:
       - name: 📤 上传 App Store
         run: |
           xcrun altool --upload-app -f signed.ipa -t ios \
-            -u "${{ secrets.APPLE_ID }}" \
-            -p "${{ secrets.APPLE_PASSWORD }}" \
+            -u "${{ inputs.apple_id }}" \
+            -p "${{ inputs.apple_password }}" \
             --output-format json
 
       - name: 📢 通知服务器 - 成功
