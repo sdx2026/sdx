@@ -35,6 +35,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
 
 $router = new Router();
 
+// === Auth middleware (skip for login page, API, and download) ===
+$router->addMiddleware(function () {
+    $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    $publicPaths = ['/login', '/api/health', '/api/tasks/', '/api/settings', '/download/'];
+    foreach ($publicPaths as $p) {
+        if (strpos($uri, $p) === 0) return;
+    }
+    // Allow callback without auth
+    if (strpos($uri, '/callback') !== false) return;
+    // Allow DELETE API without auth (called by JS)
+    if ($_SERVER['REQUEST_METHOD'] === 'DELETE') return;
+    
+    if (!Router::isLoggedIn()) {
+        Router::redirect('/login');
+        return false;
+    }
+});
+
+// === Login page ===
+$router->get('/login', function () {
+    if (Router::isLoggedIn()) { Router::redirect('/'); return ''; }
+    return Router::view('login');
+});
+$router->post('/login', function () {
+    $password = $_POST['password'] ?? '';
+    if (Router::verifyPassword($password)) {
+        session_start();
+        $_SESSION['tfsigner_auth'] = true;
+        Router::logOp('login', 'User logged in');
+        Router::redirect('/');
+    } else {
+        return Router::view('login', ['error' => '密码错误']);
+    }
+    return '';
+});
+$router->get('/logout', function () {
+    session_start();
+    session_destroy();
+    Router::logOp('logout', 'User logged out');
+    Router::redirect('/login');
+    return '';
+});
+
 // === Web pages ===
 $router->get('/', [DashboardController::class, 'index']);
 $router->get('/apps', [AppController::class, 'index']);
@@ -42,11 +85,62 @@ $router->post('/apps', [AppController::class, 'create']);
 $router->get('/certs', function () { return Router::view('certs'); });
 $router->get('/profiles', function () { return Router::view('profiles'); });
 $router->get('/settings', function () { return Router::view('settings'); });
+$router->get('/logs', function () {
+    $pdo = \TfSigner\Core\Database::connection();
+    $logs = $pdo->query("SELECT * FROM operation_logs ORDER BY created_at DESC LIMIT 100")->fetchAll();
+    return Router::view('logs', ['logs' => $logs]);
+});
 $router->get('/tasks', [TaskController::class, 'index']);
 $router->get('/tasks/new', [TaskController::class, 'create']);
 $router->post('/tasks', [TaskController::class, 'create']);
 $router->get('/tasks/{id}', [TaskController::class, 'show']);
 $router->get('/tasks/{id}/retry', [TaskController::class, 'retry']);
+
+// === OTA install ===
+$router->get('/ota/install/{task_id}', function ($taskId) {
+    $pdo = \TfSigner\Core\Database::connection();
+    $task = $pdo->prepare("SELECT * FROM tasks WHERE id = ?");
+    $task->execute([(int)$taskId]);
+    $task = $task->fetch();
+    if (!$task || !$task['output_ipa']) {
+        return Router::json(['error' => 'IPA not found'], 404);
+    }
+    
+    $ipaUrl = "http://38.246.249.155:8088/download/" . basename($task['output_ipa']);
+    $bundleId = $task['bundle_id'] ?? 'com.example.app';
+    $appName = $task['app_name'] ?? 'App';
+    $version = '1.0';
+    
+    $plist = '<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>items</key>
+    <array>
+        <dict>
+            <key>assets</key>
+            <array>
+                <dict>
+                    <key>kind</key><string>software-package</string>
+                    <key>url</key><string>' . $ipaUrl . '</string>
+                </dict>
+            </array>
+            <key>metadata</key>
+            <dict>
+                <key>bundle-identifier</key><string>' . $bundleId . '</string>
+                <key>bundle-version</key><string>' . $version . '</string>
+                <key>kind</key><string>software</string>
+                <key>title</key><string>' . $appName . '</string>
+            </dict>
+        </dict>
+    </array>
+</dict>
+</plist>';
+    
+    header('Content-Type: application/xml');
+    echo $plist;
+    return '';
+});
 
 // === API endpoints ===
 $router->get('/api/health', [ApiController::class, 'health']);
@@ -62,6 +156,8 @@ $router->post('/api/profiles/upload', [ApiController::class, 'uploadProfile']);
 $router->post('/api/ipa/parse', [ApiController::class, 'parseIpa']);
 $router->get('/api/settings', [ApiController::class, 'getSettings']);
 $router->post('/api/settings', [ApiController::class, 'saveSettings']);
+$router->get('/api/worker-status', [ApiController::class, 'workerStatus']);
+$router->get('/api/dashboard-stats', [ApiController::class, 'dashboardStats']);
 
 // === POST delete routes ===
 $router->post('/apps/{id}/delete', function($id) { return AppController::delete((int)$id); });

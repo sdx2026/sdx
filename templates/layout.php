@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><?= htmlspecialchars($title ?? 'TF 签名系统') ?> — TF 自动签名上架</title>
     <style>
-        :root {--bg:#0d0d0d;--surface:#1a1a1a;--surface2:#252525;--border:#333;--text:#e0e0e0;--text2:#999;--accent:#3b82f6;--accent2:#2563eb;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:8px}
+        :root{--bg:#0d0d0d;--surface:#1a1a1a;--surface2:#252525;--border:#333;--text:#e0e0e0;--text2:#999;--accent:#3b82f6;--accent2:#2563eb;--green:#22c55e;--red:#ef4444;--amber:#f59e0b;--radius:8px}
         *{margin:0;padding:0;box-sizing:border-box}
         body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:var(--bg);color:var(--text);line-height:1.6;min-height:100vh}
         .layout{display:flex;min-height:100vh}
@@ -19,7 +19,7 @@
         .sidebar-nav a.active{border-left:3px solid var(--accent);padding-left:11px}
         .main{margin-left:240px;flex:1;padding:30px 40px;max-width:1200px}
         h1{font-size:1.5rem;margin-bottom:20px}h2{font-size:1.2rem;margin-bottom:15px}
-        .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;margin-bottom:30px}
+        .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;margin-bottom:30px}
         .stat-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
         .stat-card .stat-value{font-size:2rem;font-weight:700;margin-bottom:4px}
         .stat-card .stat-label{color:var(--text2);font-size:0.85rem}
@@ -39,7 +39,7 @@
         .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
         .btn-outline:hover{border-color:var(--accent);color:var(--accent)}
         .form-group{margin-bottom:16px}.form-group label{display:block;margin-bottom:6px;font-size:0.85rem;color:var(--text2);font-weight:500}
-        .form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:0.9rem;outline:none;transition:border-color 0.15s}
+        .form-group input,.form-group select,.form-group textarea{width:100%;padding:10px 14px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-size:0.9rem;outline:none}
         .form-group input:focus,.form-group select:focus{border-color:var(--accent)}
         .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:24px;margin-bottom:20px}
         .progress-bar{height:6px;background:var(--surface2);border-radius:3px;overflow:hidden;margin-top:6px}
@@ -65,8 +65,9 @@
             <li><a href="/certs" class="<?= ($current ?? '') === 'certs' ? 'active' : '' ?>">🔐 证书管理</a></li>
             <li><a href="/profiles" class="<?= ($current ?? '') === 'profiles' ? 'active' : '' ?>">📄 描述文件</a></li>
             <li><a href="/settings" class="<?= ($current ?? '') === 'settings' ? 'active' : '' ?>">⚙️ 设置</a></li>
+            <li><a href="/logs" class="<?= ($current ?? '') === 'logs' ? 'active' : '' ?>">📝 操作日志</a></li>
         </ul>
-        <div class="text-muted" style="margin-top:auto;">v1.0</div>
+        <a href="/logout" class="btn btn-outline btn-sm" style="margin-top:auto;text-align:center;">🚪 退出登录</a>
     </aside>
     <main class="main"><?= $content ?? '' ?></main>
 </div>

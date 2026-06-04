@@ -39,11 +39,11 @@ class Router
         if (preg_match('#^/assets/#', $uri)) {
             $file = __DIR__ . '/../../public' . $uri;
             if (file_exists($file)) {
-                $mime = match(pathinfo($file, PATHINFO_EXTENSION)) {
+                $mime = match (pathinfo($file, PATHINFO_EXTENSION)) {
                     'css' => 'text/css',
                     'js' => 'application/javascript',
                     'png' => 'image/png',
-                    'jpg','jpeg' => 'image/jpeg',
+                    'jpg', 'jpeg' => 'image/jpeg',
                     'svg' => 'image/svg+xml',
                     default => 'application/octet-stream',
                 };
@@ -92,5 +92,38 @@ class Router
         }
         require $file;
         return ob_get_clean();
+    }
+
+    /**
+     * Check if user is logged in
+     */
+    public static function isLoggedIn(): bool
+    {
+        session_start();
+        return !empty($_SESSION['tfsigner_auth']);
+    }
+
+    /**
+     * Verify password
+     */
+    public static function verifyPassword(string $password): bool
+    {
+        $pdo = \TfSigner\Core\Database::connection();
+        $stmt = $pdo->prepare("SELECT value FROM settings WHERE key = 'admin_password'");
+        $stmt->execute();
+        $hash = $stmt->fetchColumn();
+        return $hash && password_verify($password, $hash);
+    }
+
+    /**
+     * Log an operation
+     */
+    public static function logOp(string $action, string $detail = ''): void
+    {
+        try {
+            $pdo = \TfSigner\Core\Database::connection();
+            $pdo->prepare("INSERT INTO operation_logs (action, detail, ip) VALUES (?, ?, ?)")
+                ->execute([$action, $detail, $_SERVER['REMOTE_ADDR'] ?? '']);
+        } catch (\Throwable $e) {}
     }
 }
