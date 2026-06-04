@@ -42,6 +42,13 @@
 
 <?php if ($task['result']): ?>
 <div class="card">
+<?php if ($task['output_ipa'] && $task['status'] === 'completed'): ?>
+<div class="card" style="border-color: var(--green);">
+    <h2 style="color: var(--green);">✅ 签名完成</h2>
+    <p>签名好的 IPA 可下载:</p>
+    <a href="/download/<?= basename($task['output_ipa']) ?>" class="btn btn-primary">📥 下载签名 IPA</a>
+</div>
+<?php endif; ?>
     <h2>执行结果</h2>
     <pre style="white-space: pre-wrap; word-break: break-all; font-size: 0.85rem; line-height: 1.5; background: var(--bg); padding: 16px; border-radius: var(--radius);"><?= htmlspecialchars(json_encode(json_decode($task['result']), JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE)) ?></pre>
 </div>

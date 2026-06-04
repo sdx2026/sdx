@@ -9,17 +9,12 @@ use TfSigner\Services\TaskService;
 
 class ApiController
 {
-    /**
-     * Create task via API (for automation)
-     */
     public static function createTask(): string
     {
         $input = json_decode(file_get_contents('php://input'), true);
-
         if (!$input || empty($input['input_ipa'])) {
             return Router::json(['error' => 'input_ipa is required'], 400);
         }
-
         $service = new TaskService();
         $task = $service->create([
             'app_id' => $input['app_id'] ?? null,
@@ -31,39 +26,26 @@ class ApiController
             'app_password' => $input['app_password'] ?? '',
             'priority' => $input['priority'] ?? 0,
         ]);
-
         return Router::json(['success' => true, 'task' => $task]);
     }
 
-    /**
-     * Get task status via API
-     */
     public static function getTask(int $id): string
     {
         $service = new TaskService();
         $task = $service->get($id);
-        if (!$task) {
-            return Router::json(['error' => 'Task not found'], 404);
-        }
+        if (!$task) return Router::json(['error' => 'Task not found'], 404);
         return Router::json($task);
     }
 
-    /**
-     * List certificates
-     */
     public static function listCerts(): string
     {
         $service = new CertificateService();
         return Router::json($service->listAll());
     }
 
-    /**
-     * Generate certificate
-     */
     public static function generateCert(): string
     {
         $input = json_decode(file_get_contents('php://input'), true) ?: $_POST;
-
         $service = new CertificateService();
         try {
             $result = $service->generate($input);
@@ -73,17 +55,10 @@ class ApiController
         }
     }
 
-    /**
-     * Import certificate
-     */
     public static function importCert(): string
     {
         $input = json_decode(file_get_contents('php://input'), true);
-
-        if (!$input) {
-            return Router::json(['error' => 'Invalid JSON'], 400);
-        }
-
+        if (!$input) return Router::json(['error' => 'Invalid JSON'], 400);
         $service = new CertificateService();
         try {
             $result = $service->import($input);
@@ -93,9 +68,6 @@ class ApiController
         }
     }
 
-    /**
-     * Delete certificate
-     */
     public static function deleteCert(int $id): string
     {
         $service = new CertificateService();
@@ -103,9 +75,6 @@ class ApiController
         return Router::json(['success' => true]);
     }
 
-    /**
-     * List apps
-     */
     public static function listApps(): string
     {
         $pdo = Database::connection();
@@ -113,9 +82,6 @@ class ApiController
         return Router::json($apps);
     }
 
-    /**
-     * List provisioning profiles
-     */
     public static function listProfiles(): string
     {
         $pdo = Database::connection();
@@ -129,13 +95,44 @@ class ApiController
         return Router::json($profiles);
     }
 
-    /**
-     * Health check
-     */
+    public static function uploadProfile(): string
+    {
+        if (empty($_FILES['profile_file'])) {
+            return Router::json(['error' => 'Profile file required'], 400);
+        }
+        $appId = (int)($_POST['app_id'] ?? 0);
+        $certId = !empty($_POST['cert_id']) ? (int)$_POST['cert_id'] : null;
+        $name = $_POST['name'] ?? 'Imported Profile';
+        if (!$appId) return Router::json(['error' => 'App is required'], 400);
+
+        $uploadDir = Config::get('storage.certs');
+        $destName = 'profile_' . time() . '_' . basename($_FILES['profile_file']['name']);
+        $profilePath = $uploadDir . '/' . $destName;
+        move_uploaded_file($_FILES['profile_file']['tmp_name'], $profilePath);
+
+        // Try to extract bundle_id from profile
+        $bundleId = '';
+        $content = file_get_contents($profilePath);
+        if (preg_match('/<key>application-identifier<\/key>\s*<string>(.+?)<\/string>/s', $content, $m)) {
+            $parts = explode('.', $m[1]);
+            $bundleId = $parts[1] ?? $m[1];
+        }
+        if (empty($bundleId)) {
+            if (preg_match('/<key>Name<\/key>\s*<string>(.+?)<\/string>/s', $content, $m)) {
+                $bundleId = $m[1];
+            }
+        }
+
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare("INSERT INTO provisioning_profiles (app_id, cert_id, name, uuid, profile_path, bundle_id, profile_type) VALUES (?, ?, ?, '', ?, ?, 'app-store')");
+        $stmt->execute([$appId, $certId, $name, $profilePath, $bundleId]);
+        return Router::json(['success' => true, 'id' => $pdo->lastInsertId(), 'bundle_id' => $bundleId]);
+    }
+
     public static function taskCallback(int $id): string
     {
         $input = json_decode(file_get_contents('php://input'), true);
-        $service = new TfSignerServicesTaskService();
+        $service = new TaskService();
         $status = $input['status'] ?? 'completed';
         $error = $input['error'] ?? null;
         $result = $input['result'] ?? null;
@@ -147,11 +144,7 @@ class ApiController
     {
         $pdo = Database::connection();
         $dbOk = false;
-        try {
-            $pdo->query("SELECT 1");
-            $dbOk = true;
-        } catch (\Throwable $e) {}
-
+        try { $pdo->query("SELECT 1"); $dbOk = true; } catch (\Throwable $e) {}
         return Router::json([
             'status' => $dbOk ? 'ok' : 'degraded',
             'version' => Config::get('app.version'),

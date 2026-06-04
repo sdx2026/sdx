@@ -63,6 +63,7 @@ $router->get('/tasks/{id}/retry', [TaskController::class, 'retry']);
 $router->get('/api/health', [ApiController::class, 'health']);
 $router->post('/api/tasks', [ApiController::class, 'createTask']);
 $router->get('/api/tasks/{id}', [ApiController::class, 'getTask']);
+$router->get('/profiles', function () { return \TfSigner\Core\Router::view('profiles'); });
 $router->get('/api/certs', [ApiController::class, 'listCerts']);
 $router->post('/api/certs', [ApiController::class, 'generateCert']);
 $router->post('/api/certs/import', [ApiController::class, 'importCert']);
@@ -75,6 +76,7 @@ $router->post('/tasks/{id}/delete', function($id) {
     $pdo = \TfSigner\Core\Database::connection();
     $pdo->prepare("DELETE FROM tasks WHERE id = ?")->execute([(int)$id]);
     Router::redirect('/tasks');
+$router->post('/api/profiles/upload', [ApiController::class, 'uploadProfile']);
     return '';
 $router->get('/download/{file}', function($file) {
     $storageDirs = [
