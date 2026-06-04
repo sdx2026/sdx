@@ -331,7 +331,7 @@ if (preg_match('/<key>CFBundleVersion</key>\s*<string>(.+?)</string>/s', $plist,
             $pdo->prepare("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')")
                 ->execute([$hash ?: password_hash('admin123', PASSWORD_BCRYPT)]);
         }
-        return Router::json($pdo->query("SELECT id, username, role, created_at, last_login FROM users ORDER BY id")->fetchAll());
+        return Router::json($pdo->query("SELECT id, username, role, permissions, created_at, last_login FROM users ORDER BY id")->fetchAll());
     }
 
     public static function createUser(): string
@@ -351,7 +351,9 @@ if (preg_match('/<key>CFBundleVersion</key>\s*<string>(.+?)</string>/s', $plist,
         )");
         try {
             $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)");
-            $stmt->execute([$input['username'], password_hash($input['password'], PASSWORD_BCRYPT), $input['role'] ?? 'user']);
+            $permissions = json_encode($input['permissions'] ?? [], JSON_UNESCAPED_UNICODE);
+            $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, role, permissions) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$input['username'], password_hash($input['password'], PASSWORD_BCRYPT), $input['role'] ?? 'user', $permissions]);
             Router::logOp('user_create', $input['username']);
             return Router::json(['success' => true, 'id' => $pdo->lastInsertId()]);
         } catch (\Throwable $e) {
@@ -482,6 +484,102 @@ if (preg_match('/<key>CFBundleVersion</key>\s*<string>(.+?)</string>/s', $plist,
         } finally {
             @unlink($keyPath);
         }
+    }
+
+
+
+    // === Apple Accounts management ===
+    public static function listAppleAccounts(): string
+    {
+        $pdo = Database::connection();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS apple_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            apple_id TEXT NOT NULL,
+            app_password TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+        return Router::json($pdo->query("SELECT id, apple_id, note, created_at FROM apple_accounts ORDER BY id")->fetchAll());
+    }
+
+    public static function createAppleAccount(): string
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input['apple_id']) || empty($input['app_password'])) {
+            return Router::json(['error' => 'Apple ID and password required'], 400);
+        }
+        $pdo = Database::connection();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS apple_accounts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            apple_id TEXT NOT NULL,
+            app_password TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+        try {
+            $stmt = $pdo->prepare("INSERT INTO apple_accounts (apple_id, app_password, note) VALUES (?, ?, ?)");
+            $stmt->execute([$input['apple_id'], $input['app_password'], $input['note'] ?? '']);
+            Router::logOp('apple_account_add', $input['apple_id']);
+            return Router::json(['success' => true, 'id' => $pdo->lastInsertId()]);
+        } catch (\Throwable $e) {
+            return Router::json(['error' => 'Account already exists'], 400);
+        }
+    }
+
+    public static function deleteAppleAccount(int $id): string
+    {
+        $pdo = Database::connection();
+        $pdo->prepare("DELETE FROM apple_accounts WHERE id = ?")->execute([$id]);
+        Router::logOp('apple_account_delete', 'ID: ' . $id);
+        return Router::json(['success' => true]);
+    }
+
+    // === API Keys management ===
+    public static function listApiKeys(): string
+    {
+        $pdo = Database::connection();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            issuer_id TEXT NOT NULL,
+            key_id TEXT NOT NULL,
+            key_content TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+        return Router::json($pdo->query("SELECT id, issuer_id, key_id, note, created_at FROM api_keys ORDER BY id")->fetchAll());
+    }
+
+    public static function createApiKey(): string
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input['issuer_id']) || empty($input['key_id']) || empty($input['key_content'])) {
+            return Router::json(['error' => 'Issuer ID, Key ID, and Key content required'], 400);
+        }
+        $pdo = Database::connection();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS api_keys (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            issuer_id TEXT NOT NULL,
+            key_id TEXT NOT NULL,
+            key_content TEXT NOT NULL,
+            note TEXT DEFAULT '',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )");
+        try {
+            $stmt = $pdo->prepare("INSERT INTO api_keys (issuer_id, key_id, key_content, note) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$input['issuer_id'], $input['key_id'], $input['key_content'], $input['note'] ?? '']);
+            Router::logOp('api_key_add', $input['key_id']);
+            return Router::json(['success' => true, 'id' => $pdo->lastInsertId()]);
+        } catch (\Throwable $e) {
+            return Router::json(['error' => $e->getMessage()], 400);
+        }
+    }
+
+    public static function deleteApiKey(int $id): string
+    {
+        $pdo = Database::connection();
+        $pdo->prepare("DELETE FROM api_keys WHERE id = ?")->execute([$id]);
+        Router::logOp('api_key_delete', 'ID: ' . $id);
+        return Router::json(['success' => true]);
     }
 
 }

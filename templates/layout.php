@@ -58,16 +58,17 @@
     <aside class="sidebar">
         <div class="sidebar-logo">🚀 TF Signer<span>自动签名上架系统</span></div>
         <ul class="sidebar-nav">
+<?php $userPerms = json_decode($_SESSION['tfsigner_perms'] ?? '[]', true); $isAdmin = ($_SESSION['tfsigner_role'] ?? 'admin') === 'admin'; ?>
             <li><a href="/" class="<?= ($current ?? '') === 'dashboard' ? 'active' : '' ?>">📊 仪表盘</a></li>
             <li><a href="/tasks" class="<?= ($current ?? '') === 'tasks' ? 'active' : '' ?>">📋 任务列表</a></li>
             <li><a href="/tasks/new" class="<?= ($current ?? '') === 'tasks_new' ? 'active' : '' ?>">➕ 新建任务</a></li>
-            <li><a href="/ipas" class="<?= ($current ?? '') === 'ipas' ? 'active' : '' ?>">📦 IPA 管理</a></li>
-            <li><a href="/apps" class="<?= ($current ?? '') === 'apps' ? 'active' : '' ?>">📱 应用管理</a></li>
-            <li><a href="/certs" class="<?= ($current ?? '') === 'certs' ? 'active' : '' ?>">🔐 证书管理</a></li>
-            <li><a href="/profiles" class="<?= ($current ?? '') === 'profiles' ? 'active' : '' ?>">📄 描述文件</a></li>
-            <li><a href="/settings" class="<?= ($current ?? '') === 'settings' ? 'active' : '' ?>">⚙️ 设置</a></li>
-<li><a href="/stats" class="<?= ($current ?? '') === 'stats' ? 'active' : '' ?>">📈 统计图表</a></li>            <li><a href="/users" class="<?= ($current ?? '') === 'users' ? 'active' : '' ?>">👥 用户管理</a></li>
-            <li><a href="/logs" class="<?= ($current ?? '') === 'logs' ? 'active' : '' ?>">📝 操作日志</a></li>
+            <?php if ($isAdmin || in_array("ipas", $userPerms)): ?><li><a href="/ipas" class="<?= ($current ?? '') === 'ipas' ? 'active' : '' ?>">📦 IPA 管理</a></li><?php endif; ?>
+            <?php if ($isAdmin || in_array("apps", $userPerms)): ?><li><a href="/apps" class="<?= ($current ?? '') === 'apps' ? 'active' : '' ?>">📱 应用管理</a></li><?php endif; ?>
+            <?php if ($isAdmin || in_array("certs", $userPerms)): ?><li><a href="/certs" class="<?= ($current ?? '') === 'certs' ? 'active' : '' ?>">🔐 证书管理</a></li><?php endif; ?>
+            <?php if ($isAdmin || in_array("profiles", $userPerms)): ?><li><a href="/profiles" class="<?= ($current ?? '') === 'profiles' ? 'active' : '' ?>">📄 描述文件</a></li><?php endif; ?>
+            <?php if ($isAdmin || in_array("settings", $userPerms)): ?><li><a href="/settings" class="<?= ($current ?? '') === 'settings' ? 'active' : '' ?>">⚙️ 设置</a></li><?php endif; ?>
+<?php if ($isAdmin || in_array("stats", $userPerms)): ?><li><a href="/stats" class="<?= ($current ?? '') === 'stats' ? 'active' : '' ?>">📈 统计图表</a></li><?php endif; ?>            <?php if ($isAdmin || in_array("users", $userPerms)): ?><li><a href="/users" class="<?= ($current ?? '') === 'users' ? 'active' : '' ?>">👥 用户管理</a></li><?php endif; ?>
+            <?php if ($isAdmin || in_array("logs", $userPerms)): ?><li><a href="/logs" class="<?= ($current ?? '') === 'logs' ? 'active' : '' ?>">📝 操作日志</a></li><?php endif; ?>
         </ul>
         <a href="/logout" class="btn btn-outline btn-sm" style="margin-top:auto;text-align:center;">🚪 退出登录</a>
     </aside>

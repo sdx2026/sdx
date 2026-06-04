@@ -47,6 +47,24 @@ $router->addMiddleware(function () {
     // Allow DELETE API without auth (called by JS)
     if ($_SERVER['REQUEST_METHOD'] === 'DELETE') return;
     
+    
+    // Check user permissions for restricted pages (non-admin only)
+    $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
+    $role = $_SESSION['tfsigner_role'] ?? 'admin';
+    if ($role !== 'admin') {
+        $perms = json_decode($_SESSION['tfsigner_perms'] ?? '[]', true);
+        $menuMap = [
+            '/' => 'dashboard', '/tasks' => 'tasks', '/tasks/new' => 'tasks_new',
+            '/ipas' => 'ipas', '/apps' => 'apps', '/certs' => 'certs',
+            '/profiles' => 'profiles', '/stats' => 'stats', '/settings' => 'settings',
+            '/users' => 'users', '/logs' => 'logs',
+        ];
+        $permKey = $menuMap[$uri] ?? null;
+        if ($permKey && !in_array($permKey, $perms)) {
+            Router::redirect('/');
+            return false;
+        }
+    }
     if (!Router::isLoggedIn()) {
         Router::redirect('/login');
         return false;
@@ -162,6 +180,10 @@ $router->get('/api/users', [ApiController::class, 'listUsers']);
 $router->post('/api/users', [ApiController::class, 'createUser']);
 $router->post('/api/certs/apple-generate', [ApiController::class, 'appleGenerateCert']);
 $router->post('/api/profiles/apple-generate', [ApiController::class, 'appleGenerateProfile']);
+$router->get('/api/apple-accounts', [ApiController::class, 'listAppleAccounts']);
+$router->post('/api/apple-accounts', [ApiController::class, 'createAppleAccount']);
+$router->get('/api/api-keys', [ApiController::class, 'listApiKeys']);
+$router->post('/api/api-keys', [ApiController::class, 'createApiKey']);
 $router->get('/api/ipas', [ApiController::class, 'listIpas']);
 $router->post('/api/ipas/delete', [ApiController::class, 'deleteIpa']);
 $router->get('/api/settings', [ApiController::class, 'getSettings']);
@@ -204,6 +226,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     if (preg_match('#^/tasks/(\d+)$#', $uri, $m)) { echo TaskController::delete((int)$m[1]); exit; }
     if (preg_match('#^/api/certs/(\d+)$#', $uri, $m)) { echo ApiController::deleteCert((int)$m[1]); exit; }
     if (preg_match('#^/api/users/(\d+)$#', $uri, $m)) { echo ApiController::deleteUser((int)$m[1]); exit; }
+    if (preg_match('#^/api/apple-accounts/(\d+)$#', $uri, $m)) { echo ApiController::deleteAppleAccount((int)$m[1]); exit; }
+    if (preg_match('#^/api/api-keys/(\d+)$#', $uri, $m)) { echo ApiController::deleteApiKey((int)$m[1]); exit; }
 }
 
 $router->dispatch();
