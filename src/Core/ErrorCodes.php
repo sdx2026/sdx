@@ -138,4 +138,68 @@ class ErrorCodes
         return "[E9999] 未知错误 — " . $rawError . "\n💡 解决方法: 查看任务日志或联系管理员";
     }
 
+
+    // ===== Apple App Store Connect / TestFlight 真实错误代码 =====
+    private static array $itmsMessages = [
+        "ITMS-9000" => "Info.plist 缺少必填字段（如 CFBundleIdentifier、CFBundleVersion 等）",
+        "ITMS-90022" => "缺少 57x57 的 App 图标（CFBundleIconFiles）",
+        "ITMS-90023" => "缺少 512x512 的 App Store 图标",
+        "ITMS-90034" => "签名证书缺失或不受信任",
+        "ITMS-90035" => "签名无效，证书或描述文件过期/不匹配",
+        "ITMS-90046" => "应用包含未签名的二进制文件",
+        "ITMS-90080" => "无法读取 Provisioning Profile",
+        "ITMS-90085" => "二进制文件中没有找到正确的签名",
+        "ITMS-90096" => "二进制文件格式无效",
+        "ITMS-90161" => "描述文件无效或已过期",
+        "ITMS-90164" => "缺少必需的架构（如 arm64）",
+        "ITMS-90166" => "缺少必需的 64-bit 支持",
+        "ITMS-90167" => "App 切片信息无效",
+        "ITMS-90171" => "Bundle 结构无效",
+        "ITMS-90179" => "代码签名无效",
+        "ITMS-90186" => "SDK 版本低于最低要求",
+        "ITMS-90191" => "缺少必需的推送通知权限描述",
+        "ITMS-90207" => "IPA 文件损坏或格式无效",
+        "ITMS-90208" => "Bundle 中包含无效文件",
+        "ITMS-90209" => "Bundle 中包含符号链接",
+        "ITMS-90227" => "缺少必需的配置文件",
+        "ITMS-90230" => "Info.plist 中 CFBundleVersion 格式无效",
+        "ITMS-90239" => "Bundle 中包含不被允许的文件类型",
+        "ITMS-90240" => "应用包含不支持的架构",
+        "ITMS-90283" => "缺少 CFBundleVersion（构建号）",
+        "ITMS-90284" => "CFBundleShortVersionString（版本号）格式无效",
+        "ITMS-90338" => "使用了非公开 API",
+        "ITMS-90362" => "Info.plist 值无效",
+        "ITMS-90426" => "找不到匹配的 Provisioning Profile",
+        "ITMS-90428" => "无效的 Swift 支持文件",
+        "ITMS-90474" => "CFBundleVersion 与已有版本冲突（构建号未递增）",
+        "ITMS-90475" => "应用需要更新以适配新版本 iOS",
+        "ITMS-90511" => "应用使用了已废弃的 API",
+        "ITMS-90529" => "提交的 .ipa 包有问题",
+        "ITMS-90534" => "应用安装验证失败",
+        "ITMS-90535" => "Bundle ID 与实际应用不匹配",
+        "ITMS-90635" => "Info.plist 缺少 UIRequiredDeviceCapabilities",
+        "ITMS-90683" => "Info.plist 缺少隐私权限描述（如 NSPhotoLibraryUsageDescription）",
+        "ITMS-90685" => "缺少必需的启动图",
+        "ITMS-90704" => "缺少 App Store 图标（1024x1024）",
+        "ITMS-90713" => "缺少 iPad 支持（如应用声明支持 iPad 但缺少相应资源）",
+        "ITMS-90717" => "App Store 图标尺寸不符（必须 1024x1024，无圆角）",
+        "ITMS-90809" => "使用了 UIWebView（已废弃）",
+        "ITMS-90893" => "应用使用了过期/废弃的库",
+        "ITMS-90967" => "应用内购买配置有问题",
+    ];
+
+    public static function getITMSMessage(string $code): string
+    {
+        return self::$itmsMessages[$code] ?? "未知 App Store 错误 {$code}";
+    }
+
+    public static function parseITMSError(string $rawError): string
+    {
+        if (preg_match('/(ITMS-\d+)/', $rawError, $m)) {
+            $code = $m[1];
+            return "[{$code}] " . self::getITMSMessage($code) . "\n💡 搜索 $code 并查看 Apple 官方文档";
+        }
+        return $rawError;
+    }
+
 }

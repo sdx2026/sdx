@@ -179,7 +179,56 @@
 <span class="text-muted">SSH 登录服务器执行：<code>cd /www/wwwroot/tfsigner && nohup php worker.php > /dev/null 2>&1 &</code></span></p>
 
 <p><b>Q: 可以不用 Mac 吗？</b><br>
-<span class="text-muted">可以！系统已内置 zsign，在 Linux 服务器上直接签名。获取证书需要 Mac 或 Apple API Key。</span></p>
+<span class="text-muted">
+<h2 id="itms">🍎 App Store Connect 上传错误 (ITMS)</h2>
+<p>真正从 Apple 服务器返回的上传错误代码，<b>往往错误原因是什么，一般提示什么就是什么</b>。对照如下：</p>
+
+<h3>签名/证书 (ITMS-900xx)</h3>
+<table>
+<tr><th>代码</th><th>含义</th><th>最可能原因</th></tr>
+<tr><td><code>ITMS-90034</code></td><td>签名证书缺失</td><td>证书未导入或过期</td></tr>
+<tr><td><code>ITMS-90035</code></td><td>签名无效</td><td>证书和描述文件不匹配</td></tr>
+<tr><td><code>ITMS-90046</code></td><td>二进制未签名</td><td>Frameworks 未签</td></tr>
+<tr><td><code>ITMS-90179</code></td><td>代码签名无效</td><td>签名工具链问题</td></tr>
+</table>
+
+<h3>IPA/包结构 (ITMS-901xx~902xx)</h3>
+<table>
+<tr><th>代码</th><th>含义</th><th>最可能原因</th></tr>
+<tr><td><code>ITMS-90161</code></td><td>描述文件无效</td><td>已过期或 App ID 不匹配</td></tr>
+<tr><td><code>ITMS-90207</code></td><td>IPA 损坏</td><td>文件不完整或格式错误</td></tr>
+<tr><td><code>ITMS-90208</code></td><td>无效文件</td><td>包里有多余文件</td></tr>
+<tr><td><code>ITMS-90171</code></td><td>Bundle 结构无效</td><td>Payload 目录结构异常</td></tr>
+</table>
+
+<h3>版本/构建号 (ITMS-902xx~904xx)</h3>
+<table>
+<tr><th>代码</th><th>含义</th><th>最可能原因</th></tr>
+<tr><td><code>ITMS-90230</code></td><td>构建号格式无效</td><td>CFBundleVersion 非数字</td></tr>
+<tr><td><code>ITMS-90283</code></td><td>缺少构建号</td><td>Info.plist 无 CFBundleVersion</td></tr>
+<tr><td><code>ITMS-90474</code></td><td>💀 构建号重复</td><td>⚠️ 必须递增！已存在同号版本</td></tr>
+<tr><td><code>ITMS-90284</code></td><td>版本号无效</td><td>CFBundleShortVersionString 格式不对</td></tr>
+</table>
+
+<h3>图标/资源 (ITMS-90022~907xx)</h3>
+<table>
+<tr><th>代码</th><th>含义</th><th>最可能原因</th></tr>
+<tr><td><code>ITMS-90022</code></td><td>缺 57x57 图标</td><td>CFBundleIconFiles 未配</td></tr>
+<tr><td><code>ITMS-90023</code></td><td>缺 512x512 图标</td><td>iTunesArtwork 缺失</td></tr>
+<tr><td><code>ITMS-90704</code></td><td>缺 1024x1024 图标</td><td>App Store 必须</td></tr>
+<tr><td><code>ITMS-90717</code></td><td>图标尺寸错误</td><td>1024 且不带圆角</td></tr>
+</table>
+
+<h3>配置/权限 (ITMS-905xx~906xx)</h3>
+<table>
+<tr><th>代码</th><th>含义</th><th>最可能原因</th></tr>
+<tr><td><code>ITMS-90535</code></td><td>Bundle ID 不匹配</td><td>IPA 内 ID ≠ 描述文件 ID</td></tr>
+<tr><td><code>ITMS-90683</code></td><td>缺隐私权限描述</td><td>Info.plist 加 NS***UsageDescription</td></tr>
+<tr><td><code>ITMS-90809</code></td><td>用了 UIWebView</td><td>换成 WKWebView</td></tr>
+</table>
+
+
+<p><span class="text-muted">可以！系统已内置 zsign，在 Linux 服务器上直接签名。获取证书需要 Mac 或 Apple API Key。</span></p>
 
 
 
