@@ -66,6 +66,7 @@
             <li><a href="/certs" class="<?= ($current ?? '') === 'certs' ? 'active' : '' ?>">🔐 证书管理</a></li>
             <li><a href="/profiles" class="<?= ($current ?? '') === 'profiles' ? 'active' : '' ?>">📄 描述文件</a></li>
             <li><a href="/settings" class="<?= ($current ?? '') === 'settings' ? 'active' : '' ?>">⚙️ 设置</a></li>
+<li><a href="/stats" class="<?= ($current ?? '') === 'stats' ? 'active' : '' ?>">📈 统计图表</a></li>            <li><a href="/users" class="<?= ($current ?? '') === 'users' ? 'active' : '' ?>">👥 用户管理</a></li>
             <li><a href="/logs" class="<?= ($current ?? '') === 'logs' ? 'active' : '' ?>">📝 操作日志</a></li>
         </ul>
         <a href="/logout" class="btn btn-outline btn-sm" style="margin-top:auto;text-align:center;">🚪 退出登录</a>

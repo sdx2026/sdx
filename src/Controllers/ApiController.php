@@ -268,4 +268,218 @@ class ApiController
         if ($bytes >= 1024) return round($bytes / 1024, 2) . ' KB';
         return $bytes . ' B';
     }
+
+    // === Statistics ===
+    public static function getStats(): string
+    {
+        $period = (int)($_GET['period'] ?? 30);
+        $pdo = Database::connection();
+
+        $summary = ['pending' => 0, 'processing' => 0, 'completed' => 0, 'failed' => 0, 'total' => 0];
+        foreach ($pdo->query("SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status") as $r) {
+            $summary[$r['status']] = (int)$r['cnt'];
+            $summary['total'] += (int)$r['cnt'];
+        }
+
+        $stmt = $pdo->prepare("
+            SELECT date(created_at) as d,
+                SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as completed,
+                SUM(CASE WHEN status='failed' THEN 1 ELSE 0 END) as failed,
+                COUNT(*) as total
+            FROM tasks WHERE created_at >= datetime('now', '-' || ? || ' days')
+            GROUP BY d ORDER BY d
+        ");
+        $stmt->execute([$period]);
+        $daily = $stmt->fetchAll();
+
+        $byApp = $pdo->query("
+            SELECT COALESCE(a.name, 'Unknown') as name, COUNT(*) as count
+            FROM tasks t LEFT JOIN apps a ON t.app_id = a.id
+            GROUP BY a.name ORDER BY count DESC LIMIT 10
+        ")->fetchAll();
+
+        $avgTime = $pdo->query("
+            SELECT ROUND(AVG((julianday(finished_at) - julianday(started_at)) * 1440), 1)
+            FROM tasks WHERE started_at IS NOT NULL AND finished_at IS NOT NULL
+        ")->fetchColumn();
+
+        return Router::json([
+            'summary' => $summary,
+            'daily' => $daily,
+            'by_app' => $byApp,
+            'avg_time_minutes' => $avgTime ? round((float)$avgTime, 1) . ' min' : '-',
+        ]);
+    }
+
+    // === Users management ===
+    public static function listUsers(): string
+    {
+        $pdo = Database::connection();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_login DATETIME
+        )");
+        $count = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+        if ($count == 0) {
+            $hash = $pdo->query("SELECT value FROM settings WHERE key='admin_password'")->fetchColumn();
+            $pdo->prepare("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')")
+                ->execute([$hash ?: password_hash('admin123', PASSWORD_BCRYPT)]);
+        }
+        return Router::json($pdo->query("SELECT id, username, role, created_at, last_login FROM users ORDER BY id")->fetchAll());
+    }
+
+    public static function createUser(): string
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        if (empty($input['username']) || empty($input['password'])) {
+            return Router::json(['error' => 'Username and password required'], 400);
+        }
+        $pdo = Database::connection();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            last_login DATETIME
+        )");
+        try {
+            $stmt = $pdo->prepare("INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)");
+            $stmt->execute([$input['username'], password_hash($input['password'], PASSWORD_BCRYPT), $input['role'] ?? 'user']);
+            Router::logOp('user_create', $input['username']);
+            return Router::json(['success' => true, 'id' => $pdo->lastInsertId()]);
+        } catch (\Throwable $e) {
+            return Router::json(['error' => 'Username already exists'], 400);
+        }
+    }
+
+    public static function deleteUser(int $id): string
+    {
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare("SELECT role FROM users WHERE id = ?");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
+        if (!$user) return Router::json(['error' => 'Not found'], 404);
+        $adminCount = $pdo->query("SELECT COUNT(*) FROM users WHERE role='admin'")->fetchColumn();
+        if ($user['role'] === 'admin' && $adminCount <= 1) {
+            return Router::json(['error' => 'Cannot delete last admin'], 400);
+        }
+        $pdo->prepare("DELETE FROM users WHERE id = ?")->execute([$id]);
+        Router::logOp('user_delete', 'ID: ' . $id);
+        return Router::json(['success' => true]);
+    }
+
+    // === Apple API: auto-generate certificate ===
+    public static function appleGenerateCert(): string
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $type = $input['type'] ?? 'IOS_DISTRIBUTION';
+        $name = $input['name'] ?? 'Auto Cert ' . date('Ymd');
+        $pdo = Database::connection();
+        
+        $issuerId = $pdo->query("SELECT value FROM settings WHERE key='apple_issuer_id'")->fetchColumn();
+        $keyId = $pdo->query("SELECT value FROM settings WHERE key='apple_key_id'")->fetchColumn();
+        $keyContent = $pdo->query("SELECT value FROM settings WHERE key='apple_api_key_content'")->fetchColumn();
+        
+        if (!$issuerId || !$keyId || !$keyContent) {
+            return Router::json(['error' => 'Please configure Apple API Key in Settings first'], 400);
+        }
+        
+        $keyPath = sys_get_temp_dir() . '/apple_key_' . uniqid() . '.p8';
+        file_put_contents($keyPath, $keyContent);
+        chmod($keyPath, 0600);
+        
+        try {
+            $api = new \TfSigner\Services\AppleApi($issuerId, $keyId, $keyPath);
+            $dn = ['commonName' => $name, 'emailAddress' => $input['email'] ?? 'dev@example.com'];
+            $privKey = openssl_pkey_new(['private_key_bits' => 2048, 'private_key_type' => OPENSSL_KEYTYPE_RSA]);
+            openssl_pkey_export($privKey, $privKeyOut);
+            $csr = openssl_csr_new($dn, $privKey, ['digest_alg' => 'sha256']);
+            openssl_csr_export($csr, $csrOut);
+            
+            $result = $api->createCertificate($csrOut, $type);
+            $certContent = $result['data']['attributes']['certificateContent'] ?? '';
+            if (!$certContent) return Router::json(['error' => 'Apple API returned no certificate'], 500);
+            
+            $certsDir = \TfSigner\Core\Config::get('storage.certs');
+            $baseName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $name) . '_' . time();
+            $certPath = $certsDir . '/' . $baseName . '.pem';
+            $keyPathLocal = $certsDir . '/' . $baseName . '.key';
+            file_put_contents($certPath, $certContent);
+            file_put_contents($keyPathLocal, $privKeyOut);
+            chmod($keyPathLocal, 0600);
+            
+            $certInfo = openssl_x509_parse($certContent);
+            $serial = $certInfo['serialNumber'] ?? '';
+            $expiresAt = date('Y-m-d H:i:s', $certInfo['validTo_time_t'] ?? time());
+            
+            $pdo->prepare("INSERT INTO certificates (name, type, cert_path, key_path, password, serial, team_id, expires_at, is_active) VALUES (?, ?, ?, ?, '', ?, ?, ?, 1)")
+                ->execute([$name, $type === 'IOS_DISTRIBUTION' ? 'distribution' : 'development', $certPath, $keyPathLocal, $serial, $issuerId, $expiresAt]);
+            
+            Router::logOp('cert_apple_gen', $name);
+            return Router::json(['success' => true, 'id' => $pdo->lastInsertId(), 'name' => $name, 'expires_at' => $expiresAt]);
+        } catch (\Throwable $e) {
+            return Router::json(['error' => $e->getMessage()], 500);
+        } finally {
+            @unlink($keyPath);
+        }
+    }
+
+    // === Apple API: auto-create provisioning profile ===
+    public static function appleGenerateProfile(): string
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $bundleId = $input['bundle_id'] ?? '';
+        $certId = $input['cert_id'] ?? null;
+        $name = $input['name'] ?? 'Auto Profile ' . date('Ymd');
+        if (!$bundleId) return Router::json(['error' => 'Bundle ID required'], 400);
+        if (!$certId) return Router::json(['error' => 'Certificate ID required'], 400);
+        
+        $pdo = Database::connection();
+        $cert = $pdo->prepare("SELECT * FROM certificates WHERE id = ?");
+        $cert->execute([$certId]);
+        $certData = $cert->fetch();
+        if (!$certData) return Router::json(['error' => 'Certificate not found'], 404);
+        
+        $issuerId = $pdo->query("SELECT value FROM settings WHERE key='apple_issuer_id'")->fetchColumn();
+        $keyId = $pdo->query("SELECT value FROM settings WHERE key='apple_key_id'")->fetchColumn();
+        $keyContent = $pdo->query("SELECT value FROM settings WHERE key='apple_api_key_content'")->fetchColumn();
+        if (!$issuerId || !$keyId || !$keyContent) {
+            return Router::json(['error' => 'Please configure Apple API Key in Settings first'], 400);
+        }
+        
+        $keyPath = sys_get_temp_dir() . '/apple_key_' . uniqid() . '.p8';
+        file_put_contents($keyPath, $keyContent);
+        chmod($keyPath, 0600);
+        
+        try {
+            $api = new \TfSigner\Services\AppleApi($issuerId, $keyId, $keyPath);
+            $bundle = $api->getBundleId($bundleId);
+            if (!$bundle) $bundle = $api->createBundleId($bundleId, $bundleId, 'IOS');
+            $bundleIdApi = $bundle['data']['id'] ?? ($bundle['id'] ?? '');
+            $profile = $api->createProfile($name, $bundleIdApi, [$certData['serial'] ?? (string)$certId]);
+            $profileContent = base64_decode($profile['data']['attributes']['profileContent'] ?? '') ?: '';
+            if (!$profileContent) return Router::json(['error' => 'Apple API returned no profile'], 500);
+            
+            $certsDir = \TfSigner\Core\Config::get('storage.certs');
+            $fname = 'profile_apple_' . time() . '.mobileprovision';
+            $path = $certsDir . '/' . $fname;
+            file_put_contents($path, $profileContent);
+            
+            $pdo->prepare("INSERT INTO provisioning_profiles (app_id, cert_id, name, uuid, profile_path, bundle_id, profile_type, is_active) VALUES (?, ?, ?, '', ?, ?, 'app-store', 1)")
+                ->execute([$input['app_id'] ?? null, $certId, $name, $path, $bundleId]);
+            
+            Router::logOp('profile_apple_gen', $name);
+            return Router::json(['success' => true, 'id' => $pdo->lastInsertId(), 'name' => $name]);
+        } catch (\Throwable $e) {
+            return Router::json(['error' => $e->getMessage()], 500);
+        } finally {
+            @unlink($keyPath);
+        }
+    }
+
 }

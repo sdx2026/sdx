@@ -86,6 +86,8 @@ $router->get('/certs', function () { return Router::view('certs'); });
 $router->get('/profiles', function () { return Router::view('profiles'); });
 $router->get('/settings', function () { return Router::view('settings'); });
 $router->get('/ipas', function () { return Router::view('ipas'); });
+$router->get('/stats', function () { return Router::view('stats'); });
+$router->get('/users', function () { return Router::view('users'); });
 $router->get('/logs', function () {
     $pdo = \TfSigner\Core\Database::connection();
     $logs = $pdo->query("SELECT * FROM operation_logs ORDER BY created_at DESC LIMIT 100")->fetchAll();
@@ -155,6 +157,11 @@ $router->get('/api/apps', [ApiController::class, 'listApps']);
 $router->get('/api/profiles', [ApiController::class, 'listProfiles']);
 $router->post('/api/profiles/upload', [ApiController::class, 'uploadProfile']);
 $router->post('/api/ipa/parse', [ApiController::class, 'parseIpa']);
+$router->get('/api/stats', [ApiController::class, 'getStats']);
+$router->get('/api/users', [ApiController::class, 'listUsers']);
+$router->post('/api/users', [ApiController::class, 'createUser']);
+$router->post('/api/certs/apple-generate', [ApiController::class, 'appleGenerateCert']);
+$router->post('/api/profiles/apple-generate', [ApiController::class, 'appleGenerateProfile']);
 $router->get('/api/ipas', [ApiController::class, 'listIpas']);
 $router->post('/api/ipas/delete', [ApiController::class, 'deleteIpa']);
 $router->get('/api/settings', [ApiController::class, 'getSettings']);
@@ -196,6 +203,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     if (preg_match('#^/apps/(\d+)$#', $uri, $m)) { echo AppController::delete((int)$m[1]); exit; }
     if (preg_match('#^/tasks/(\d+)$#', $uri, $m)) { echo TaskController::delete((int)$m[1]); exit; }
     if (preg_match('#^/api/certs/(\d+)$#', $uri, $m)) { echo ApiController::deleteCert((int)$m[1]); exit; }
+    if (preg_match('#^/api/users/(\d+)$#', $uri, $m)) { echo ApiController::deleteUser((int)$m[1]); exit; }
 }
 
 $router->dispatch();

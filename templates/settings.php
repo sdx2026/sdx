@@ -17,17 +17,30 @@
             </div>
         </div>
 
+        <h3 style="margin-top:16px;">🔑 App Store Connect API 密钥</h3>
+        <p class="text-muted">用于自动创建证书和描述文件（App Store Connect → 用户和访问 → 密钥 → API）</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>Issuer ID</label>
+                <input type="text" name="apple_issuer_id" id="apple_issuer_id" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx">
+            </div>
+            <div class="form-group">
+                <label>Key ID</label>
+                <input type="text" name="apple_key_id" id="apple_key_id" placeholder="XXXXXXXXXX">
+            </div>
+            <div class="form-group">
+                <label>API Key 文件 (.p8)</label>
+                <textarea name="apple_api_key_content" id="apple_api_key_content" rows="6" placeholder="粘贴 .p8 文件内容，或直接在此输入"></textarea>
+            </div>
+        </div>
+
         <h2 style="margin-top:24px;">🔧 GitHub 配置</h2>
         <div class="form-group">
             <label>GitHub Personal Access Token</label>
             <input type="password" name="github_token" id="github_token" placeholder="ghp_xxxxxxxxxxxx">
-            <span class="text-muted">在 github.com/settings/tokens 生成，勾选 workflow 权限</span>
         </div>
 
         <h2 style="margin-top:24px;">📢 通知配置</h2>
-        <p class="text-muted">任务状态变更时自动推送通知</p>
-        
-        <h3 style="margin-top:16px;">🔔 Webhook 通用</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <div class="form-group">
                 <label>Webhook URL</label>
@@ -39,26 +52,20 @@
             </div>
         </div>
 
-        <h3 style="margin-top:16px;">💬 微信企业微信通知</h3>
         <div class="form-group">
             <label>企业微信机器人 Webhook</label>
             <input type="url" name="wechat_webhook" id="wechat_webhook" placeholder="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=...">
-            <span class="text-muted">企业微信群 → 群设置 → 群机器人 → 添加 → 复制 Webhook 地址</span>
         </div>
-
-        <h3 style="margin-top:16px;">📌 钉钉通知</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <div class="form-group">
                 <label>钉钉机器人 Webhook</label>
                 <input type="url" name="dingtalk_webhook" id="dingtalk_webhook" placeholder="https://oapi.dingtalk.com/robot/send?access_token=...">
             </div>
             <div class="form-group">
-                <label>钉钉签名密钥 (可选)</label>
+                <label>钉钉签名密钥</label>
                 <input type="text" name="dingtalk_secret" id="dingtalk_secret" placeholder="加签密钥">
             </div>
         </div>
-
-        <h3 style="margin-top:16px;">✈️ Telegram 通知</h3>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <div class="form-group">
                 <label>Telegram Bot Token</label>
@@ -96,39 +103,20 @@ async function loadSettings() {
         if (el) el.value = data[k] || '';
     });
 }
-
 document.getElementById('settingsForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = {};
-    new FormData(e.target).forEach((v, k) => {
-        if (v) data[k] = v;
-    });
-    
-    // Check password match
+    new FormData(e.target).forEach((v, k) => { if (v) data[k] = v; });
     if (data.new_password && data.new_password !== data.confirm_password) {
-        alert('两次密码不一致');
-        return;
+        alert('两次密码不一致'); return;
     }
-    
-    const resp = await fetch('/api/settings', { 
-        method: 'POST', 
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(data)
-    });
+    const resp = await fetch('/api/settings', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify(data) });
     const result = await resp.json();
-    const status = document.getElementById('saveStatus');
-    if (result.success) {
-        status.textContent = '✅ 保存成功';
-        status.style.color = 'var(--green)';
-        setTimeout(() => { status.textContent = ''; }, 3000);
-        e.target.reset();
-        loadSettings();
-    } else {
-        status.textContent = '❌ 保存失败';
-        status.style.color = 'var(--red)';
-    }
+    const st = document.getElementById('saveStatus');
+    st.textContent = result.success ? '✅ 保存成功' : '❌ 失败';
+    st.style.color = result.success ? 'var(--green)' : 'var(--red)';
+    if (result.success) { e.target.reset(); loadSettings(); setTimeout(() => st.textContent = '', 3000); }
 });
-
 loadSettings();
 </script>
 
