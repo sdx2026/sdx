@@ -73,12 +73,12 @@ class SigningService
     }
 
     private function resignWithZsign(
-        string $overrideVersion,
-        string $overrideBuild,
         string $inputIpa,
         string $outputIpa,
         array $certData,
         array $profileData,
+        string $overrideVersion,
+        string $overrideBuild,
         callable $reportProgress
     ): array {
         $reportProgress(15, 'Signing with zsign');

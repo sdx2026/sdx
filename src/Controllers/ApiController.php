@@ -122,7 +122,7 @@ class ApiController
         if ($plist) {
             if (preg_match('/<key>CFBundleIdentifier<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleIdentifier'] = $m[1];
             if (preg_match('/<key>CFBundleShortVersionString<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleShortVersionString'] = $m[1];
-if (preg_match('/<key>CFBundleVersion</key>\s*<string>(.+?)</string>/s', $plist, $m)) $data['CFBundleVersion'] = $m[1];
+if (preg_match('/<key>CFBundleVersion<\/key>\s*<string>(.+?)</string>/s', $plist, $m)) $data['CFBundleVersion'] = $m[1];
             if (preg_match('/<key>CFBundleDisplayName<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleDisplayName'] = $m[1];
             if (preg_match('/<key>CFBundleName<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleName'] = $m[1];
         }
