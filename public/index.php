@@ -106,6 +106,7 @@ $router->get('/settings', function () { return Router::view('settings'); });
 $router->get('/ipas', function () { return Router::view('ipas'); });
 $router->get('/stats', function () { return Router::view('stats'); });
 $router->get('/users', function () { return Router::view('users'); });
+$router->get('/help', function () { return Router::view('help'); });
 $router->get('/logs', function () {
     $pdo = \TfSigner\Core\Database::connection();
     $logs = $pdo->query("SELECT * FROM operation_logs ORDER BY created_at DESC LIMIT 100")->fetchAll();
