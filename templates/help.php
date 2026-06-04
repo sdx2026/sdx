@@ -181,6 +181,63 @@
 <p><b>Q: 可以不用 Mac 吗？</b><br>
 <span class="text-muted">可以！系统已内置 zsign，在 Linux 服务器上直接签名。获取证书需要 Mac 或 Apple API Key。</span></p>
 
+
+
+<!-- ====== 错误代码对照表 ====== -->
+<h2 id="errors">🚨 错误代码对照表</h2>
+
+<p>任务失败时，详情页会显示错误代码（如 <code style="background:var(--red);color:#fff;padding:1px 6px;border-radius:3px;">E4002</code>）和解决方法。以下是完整对照表：</p>
+
+<h3>证书相关 (1xxx)</h3>
+<table>
+<tr><th>代码</th><th>错误</th><th>解决</th></tr>
+<tr><td><code>E1001</code></td><td>证书文件未找到</td><td>导入证书</td></tr>
+<tr><td><code>E1002</code></td><td>证书已过期</td><td>重新生成证书</td></tr>
+<tr><td><code>E1003</code></td><td>证书格式无效</td><td>确认 .p12 或 PEM 格式</td></tr>
+<tr><td><code>E1004</code></td><td>证书密码错误</td><td>检查 P12 密码</td></tr>
+</table>
+
+<h3>描述文件 (2xxx)</h3>
+<table>
+<tr><th>代码</th><th>错误</th><th>解决</th></tr>
+<tr><td><code>E2001</code></td><td>描述文件未找到</td><td>上传 .mobileprovision</td></tr>
+<tr><td><code>E2002</code></td><td>描述文件已过期</td><td>重新生成</td></tr>
+<tr><td><code>E2004</code></td><td>App ID 不匹配</td><td>Bundle ID 须一致</td></tr>
+</table>
+
+<h3>IPA 相关 (3xxx)</h3>
+<table>
+<tr><th>代码</th><th>错误</th><th>解决</th></tr>
+<tr><td><code>E3001</code></td><td>IPA 未找到</td><td>重新上传</td></tr>
+<tr><td><code>E3002</code></td><td>IPA 格式无效</td><td>确认 Xcode 导出</td></tr>
+<tr><td><code>E3004</code></td><td>无 Payload</td><td>IPA 可能损坏</td></tr>
+<tr><td><code>E3005</code></td><td>IPA 损坏</td><td>重新导出</td></tr>
+</table>
+
+<h3>签名相关 (4xxx)</h3>
+<table>
+<tr><th>代码</th><th>错误</th><th>解决</th></tr>
+<tr><td><code>E4001</code></td><td>签名工具未找到</td><td>安装 zsign</td></tr>
+<tr><td><code>E4002</code></td><td>签名失败</td><td>检查证书+描述文件匹配</td></tr>
+<tr><td><code>E4003</code></td><td>签名超时</td><td>IPA 过大或证书问题</td></tr>
+</table>
+
+<h3>上传相关 (5xxx)</h3>
+<table>
+<tr><th>代码</th><th>错误</th><th>解决</th></tr>
+<tr><td><code>E5001</code></td><td>上传失败</td><td>检查网络</td></tr>
+<tr><td><code>E5002</code></td><td>Apple 认证失败</td><td>生成 App 专用密码</td></tr>
+<tr><td><code>E5004</code></td><td>构建号重复</td><td>递增 Build 号</td></tr>
+</table>
+
+<h3>系统相关 (9xxx)</h3>
+<table>
+<tr><th>代码</th><th>错误</th><th>解决</th></tr>
+<tr><td><code>E9001</code></td><td>磁盘满</td><td>清理旧文件</td></tr>
+<tr><td><code>E9003</code></td><td>Worker 停止</td><td>重启 Worker</td></tr>
+<tr><td><code>E9999</code></td><td>未知错误</td><td>联系管理员</td></tr>
+</table>
+
 </div>
 
 <?php $content = ob_get_clean(); require __DIR__ . '/layout.php'; ?>

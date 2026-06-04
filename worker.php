@@ -48,6 +48,7 @@ if (!class_exists(\TfSigner\Core\App::class)) {
 use TfSigner\Core\App;
 use TfSigner\Core\Config;
 use TfSigner\Core\Logger;
+use TfSigner\Core\ErrorCodes;
 use TfSigner\Services\TaskService;
 
 // Bootstrap
@@ -100,7 +101,11 @@ while ($running) {
         // Mark failed tasks
         if (isset($task)) {
             try {
-                $taskService->updateStatus($task['id'], 'failed', error: $e->getMessage());
+                $errMsg = $e->getMessage();
+                if (strpos($errMsg, "[E") === false) {
+                    $errMsg = ErrorCodes::detectAndFormat($errMsg);
+                }
+                $taskService->updateStatus($task['id'], 'failed', error: $errMsg);
             } catch (\Throwable $ie) {
                 Logger::error("Failed to update task status", ['error' => $ie->getMessage()]);
             }

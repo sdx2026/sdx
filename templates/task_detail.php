@@ -57,10 +57,21 @@
     </table>
 </div>
 
-<?php if ($task['error']): ?>
+<?php if ($task['error']): 
+$errText = $task['error']; 
+preg_match('/\[E(\d+)\]/', $errText, $codeMatch);
+$errCode = $codeMatch[1] ?? '9999';
+$hasCode = !empty($codeMatch);
+?>
 <div class="card" style="border-color: var(--red);">
-    <h2 style="color: var(--red);">❌ 错误</h2>
-    <pre style="white-space:pre-wrap;word-break:break-all;color:var(--red);background:var(--bg);padding:16px;border-radius:var(--radius);"><?= htmlspecialchars($task['error']) ?></pre>
+    <h2 style="color: var(--red);">❌ 错误<?php if($hasCode): ?> <code style="background:var(--red);color:#fff;padding:2px 10px;border-radius:4px;font-size:1rem;">E<?= $errCode ?></code><?php endif; ?></h2>
+    <div style="background:rgba(239,68,68,0.08);padding:14px;border-radius:var(--radius);margin-bottom:12px;">
+        <pre style="white-space:pre-wrap;word-break:break-all;color:var(--text);margin:0;font-size:0.9rem;"><?= htmlspecialchars($errText) ?></pre>
+    </div>
+    <div style="margin-top:12px;display:flex;gap:8px;">
+        <a href="/tasks/<?= $task['id'] ?>/retry" class="btn btn-primary btn-sm">🔄 重试任务</a>
+        <a href="/help" class="btn btn-outline btn-sm">📖 查看错误代码对照表</a>
+    </div>
 </div>
 <?php endif; ?>
 
