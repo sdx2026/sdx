@@ -18,6 +18,8 @@ class SigningService
         string $outputIpa,
         int $certId,
         int $profileId,
+        string $overrideVersion = '',
+        string $overrideBuild = '',
         ?callable $progressCallback = null
     ): array {
         $reportProgress = function(int $pct, string $msg) use ($progressCallback) {
@@ -52,7 +54,7 @@ class SigningService
         }
 
         if ($useZsign) {
-            return $this->resignWithZsign($inputIpa, $outputIpa, $certData, $profileData, $reportProgress);
+            return $this->resignWithZsign($inputIpa, $outputIpa, $certData, $profileData, $overrideVersion, $overrideBuild, $reportProgress);
         } else {
             return $this->resignWithCodesign($inputIpa, $outputIpa, $certData, $profileData, $reportProgress);
         }
@@ -71,6 +73,8 @@ class SigningService
     }
 
     private function resignWithZsign(
+        string $overrideVersion,
+        string $overrideBuild,
         string $inputIpa,
         string $outputIpa,
         array $certData,

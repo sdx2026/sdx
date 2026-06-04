@@ -11,7 +11,7 @@ class TaskService
     {
         $pdo = Database::connection();
         $stmt = $pdo->prepare("
-            INSERT INTO tasks (app_id, type, input_ipa, cert_id, profile_id, apple_id, app_password, priority)
+            INSERT INTO tasks (app_id, type, input_ipa, cert_id, profile_id, apple_id, app_password, priority, override_version, override_build)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
         $stmt->execute([
@@ -154,4 +154,5 @@ class TaskService
         curl_exec($ch);
         curl_close($ch);
     }
+public function process(int $taskId): array    {        $task = $this->get($taskId);        if (!$task) throw new RuntimeException("Task not found: {$taskId}");        $this->updateStatus($taskId, "processing", progress: 10);                $signer = new TfSignerServicesSigningService();        $outputIpa = TfSignerCoreConfig::get("storage.ipas") . "/output_" . $taskId . "_" . time() . ".ipa";                $result = $signer->resign(            $task["input_ipa"],            $outputIpa,            (int)($task["cert_id"] ?? 0),            (int)($task["profile_id"] ?? 0),            $task["override_version"] ?? "",            $task["override_build"] ?? "",            function(int $pct, string $msg) use ($taskId) {                $this->updateStatus($taskId, "processing", progress: $pct);            }        );                $this->updateStatus($taskId, "completed", result: "Signed: " . basename($outputIpa), progress: 100);        return $result;    }
 }

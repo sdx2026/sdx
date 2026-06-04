@@ -122,6 +122,7 @@ class ApiController
         if ($plist) {
             if (preg_match('/<key>CFBundleIdentifier<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleIdentifier'] = $m[1];
             if (preg_match('/<key>CFBundleShortVersionString<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleShortVersionString'] = $m[1];
+if (preg_match('/<key>CFBundleVersion</key>\s*<string>(.+?)</string>/s', $plist, $m)) $data['CFBundleVersion'] = $m[1];
             if (preg_match('/<key>CFBundleDisplayName<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleDisplayName'] = $m[1];
             if (preg_match('/<key>CFBundleName<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleName'] = $m[1];
         }
@@ -129,6 +130,7 @@ class ApiController
             'success' => true, 'file_size' => round($size / 1024 / 1024, 2) . ' MB',
             'name' => $data['CFBundleDisplayName'] ?? $data['CFBundleName'] ?? 'Unknown',
             'bundle_id' => $data['CFBundleIdentifier'] ?? '', 'version' => $data['CFBundleShortVersionString'] ?? '',
+            'build' => $data['CFBundleVersion'] ?? '',
         ]);
     }
 

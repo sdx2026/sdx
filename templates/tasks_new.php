@@ -28,7 +28,21 @@
             </label>
         </div>
 
-        <h2 class="mt-20">关联信息</h2>
+        
+        <h2 class="mt-20">📱 版本信息</h2>
+        <p class="text-muted">上架 TestFlight 每次必须递增构建号 (Build)，版本号 (Version) 按需修改</p>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>版本号 (Version)</label>
+                <input type="text" name="override_version" id="overrideVersion" placeholder="自动从 IPA 读取">
+            </div>
+            <div class="form-group">
+                <label>构建号 (Build) ⭐ 每次上架必须递增</label>
+                <input type="text" name="override_build" id="overrideBuild" placeholder="自动从 IPA 读取">
+            </div>
+        </div>
+
+<h2 class="mt-20">关联信息</h2>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <div class="form-group">
                 <label>关联应用 <span class="text-muted">(自动根据Bundle ID匹配)</span></label>
@@ -120,7 +134,9 @@ async function parseFile() {
         const resp = await fetch('/api/ipa/parse', { method: 'POST', body: fd });
         const data = await resp.json();
         if (data.success) {
-            div.innerHTML = '<strong>📦 ' + data.name + '</strong> v' + data.version + ' <span class="mono">(' + data.bundle_id + ')</span> | ' + data.file_size;
+            div.innerHTML = '<strong>📦 ' + data.name + '</strong> v' + data.version + ' (Build: ' + (data.build || '-') + ') <span class="mono">(' + data.bundle_id + ')</span> | ' + data.file_size;
+            document.getElementById('overrideVersion').value = data.version || '';
+            document.getElementById('overrideBuild').value = data.build || '';
             const sel = document.getElementById('appSelect');
             for (let o of sel.options) {
                 if (o.dataset.bundle === data.bundle_id) { sel.value = o.value; break; }
