@@ -27,7 +27,7 @@
             <strong>📱 OTA 安装</strong>
             <p class="text-muted" style="margin:8px 0;">iPhone 扫码直接安装（需企业证书）</p>
             <code class="mono" style="word-break:break-all;font-size:0.75rem;background:var(--bg);padding:6px;display:block;border-radius:4px;">
-                itms-services://?action=download-manifest&url=http://38.246.249.155:8088/ota/install/<?= $task['id'] ?>
+                itms-services://?action=download-manifest&url=http://bsj.appssign.cc/ota/install/<?= $task['id'] ?>
             </code>
         </div>
     </div>

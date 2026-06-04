@@ -86,13 +86,13 @@ jobs:
       - name: 📢 通知服务器 - 成功
         if: success()
         run: |
-          curl -s -X POST "http://38.246.249.155:8088/api/tasks/${{ inputs.task_id }}/callback" \
+          curl -s -X POST "https://bsj.appssign.cc/api/tasks/${{ inputs.task_id }}/callback" \
             -H "Content-Type: application/json" \
             -d '{"status":"completed","result":"已签名并上传 App Store Connect ✅"}'
 
       - name: ❌ 通知服务器 - 失败
         if: failure()
         run: |
-          curl -s -X POST "http://38.246.249.155:8088/api/tasks/${{ inputs.task_id }}/callback" \
+          curl -s -X POST "https://bsj.appssign.cc/api/tasks/${{ inputs.task_id }}/callback" \
             -H "Content-Type: application/json" \
             -d '{"status":"failed","error":"GitHub Actions 签名或上传失败"}'

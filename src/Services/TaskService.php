@@ -345,11 +345,15 @@ class TaskService
      */
     private function triggerWebhook(string $event, array $data): void
     {
-        $enabled = Config::get('webhook.enabled', false);
+        // Check DB settings first, then fallback to config file
+        $pdo = Database::connection();
+        $dbUrl = $pdo->query("SELECT value FROM settings WHERE key = 'webhook_url'")->fetchColumn();
+        $dbSecret = $pdo->query("SELECT value FROM settings WHERE key = 'webhook_secret'")->fetchColumn();
+        $enabled = !empty($dbUrl) || Config::get('webhook.enabled', false);
         if (!$enabled) return;
 
-        $url = Config::get('webhook.url');
-        $secret = Config::get('webhook.secret');
+        $url = $dbUrl ?: Config::get('webhook.url');
+        $secret = $dbSecret ?: Config::get('webhook.secret');
 
         if (!$url) return;
 

@@ -35,7 +35,7 @@ if (!$cert || !$profile) {
     die("Certificate or profile not found\n");
 }
 
-$baseUrl = "http://38.246.249.155:8088";
+$baseUrl = "http://bsj.appssign.cc";
 
 $payload = [
     "ref" => "main",

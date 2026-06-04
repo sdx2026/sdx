@@ -106,7 +106,7 @@ $router->get('/ota/install/{task_id}', function ($taskId) {
         return Router::json(['error' => 'IPA not found'], 404);
     }
     
-    $ipaUrl = "http://38.246.249.155:8088/download/" . basename($task['output_ipa']);
+    $ipaUrl = "http://bsj.appssign.cc/download/" . basename($task['output_ipa']);
     $bundleId = $task['bundle_id'] ?? 'com.example.app';
     $appName = $task['app_name'] ?? 'App';
     $version = '1.0';
