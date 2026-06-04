@@ -7,30 +7,33 @@
         <div class="form-group">
             <label>任务类型</label>
             <select name="type">
-                <option value="github_sign">🚀 GitHub Actions 签名 + 上传</option>
-                <option value="sign_and_upload">签名 + 上传 (macOS本地)</option>
+                <option value="sign_and_upload">签名 + 上传 (本地zsign)</option>
+                <option value="github_sign">🚀 GitHub Actions 签名 + 上传 (macOS)</option>
                 <option value="sign_only">仅签名</option>
                 <option value="upload_only">仅上传</option>
             </select>
         </div>
 
         <div class="form-group">
-            <label>IPA 文件 *</label>
-            <input type="file" name="ipa_file" id="ipaFile" accept=".ipa" required>
-            <div class="parse-result" id="parseResult">
-                <strong>📦 <span id="parseName"></span></strong>
-                <span class="text-muted"> v<span id="parseVersion"></span></span>
-                <span class="mono"> (<span id="parseBundle"></span>)</span>
-                <span class="text-muted"> | <span id="parseSize"></span></span>
-            </div>
+            <label>IPA 文件 * <span class="text-muted">(可选多个文件批量上传)</span></label>
+            <input type="file" name="ipa_files[]" id="ipaFiles" accept=".ipa" multiple>
+            <input type="file" name="ipa_file" id="ipaFileSingle" accept=".ipa" style="display:none;">
+            <div class="parse-result" id="parseResult" style="margin-top:8px;padding:8px;background:var(--surface2);border-radius:var(--radius);display:none;"></div>
+        </div>
+
+        <div style="display:flex;gap:10px;align-items:center;margin-bottom:16px;">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                <input type="checkbox" name="batch" value="1" id="batchMode">
+                <span>批量模式（一次上传多个 IPA）</span>
+            </label>
         </div>
 
         <h2 class="mt-20">关联信息</h2>
         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
             <div class="form-group">
-                <label>关联应用 <span class="text-muted">(根据IPA自动匹配)</span></label>
+                <label>关联应用 <span class="text-muted">(自动根据Bundle ID匹配)</span></label>
                 <select name="app_id" id="appSelect">
-                    <option value="">-- 选择应用 --</option>
+                    <option value="">-- 自动匹配 --</option>
                     <?php foreach ($apps as $app): ?>
                     <option value="<?= $app['id'] ?>" data-bundle="<?= htmlspecialchars($app['bundle_id']) ?>">
                         <?= htmlspecialchars($app['name']) ?> (<?= htmlspecialchars($app['bundle_id']) ?>)
@@ -40,7 +43,7 @@
             </div>
             <div class="form-group">
                 <label>签名证书</label>
-                <select name="cert_id" id="certSelect">
+                <select name="cert_id">
                     <option value="">-- 选择证书 --</option>
                     <?php foreach ($certs as $cert): ?>
                     <option value="<?= $cert['id'] ?>"><?= htmlspecialchars($cert['name']) ?> (<?= $cert['type'] ?>)</option>
@@ -49,7 +52,7 @@
             </div>
             <div class="form-group">
                 <label>描述文件</label>
-                <select name="profile_id" id="profileSelect">
+                <select name="profile_id">
                     <option value="">-- 选择描述文件 --</option>
                     <?php foreach ($profiles as $p): ?>
                     <option value="<?= $p['id'] ?>"><?= htmlspecialchars($p['name']) ?></option>
@@ -72,44 +75,65 @@
         </div>
 
         <button type="submit" class="btn btn-primary" style="margin-top: 16px;">🚀 创建任务</button>
+        <span id="uploadStatus" class="text-muted" style="margin-left:12px;"></span>
     </form>
 </div>
 
 <script>
+// Toggle batch/normal mode
+document.getElementById('batchMode').addEventListener('change', function() {
+    if (this.checked) {
+        document.getElementById('ipaFiles').style.display = 'block';
+        document.getElementById('ipaFileSingle').style.display = 'none';
+        document.getElementById('ipaFiles').setAttribute('required', 'required');
+        document.getElementById('ipaFileSingle').removeAttribute('required');
+    } else {
+        document.getElementById('ipaFiles').style.display = 'none';
+        document.getElementById('ipaFileSingle').style.display = 'block';
+        document.getElementById('ipaFileSingle').setAttribute('required', 'required');
+        document.getElementById('ipaFiles').removeAttribute('required');
+    }
+});
+
 // Auto-parse IPA on file select
-document.getElementById('ipaFile').addEventListener('change', async function() {
+document.getElementById('ipaFileSingle').addEventListener('change', parseFile);
+document.getElementById('ipaFiles').addEventListener('change', async function() {
+    const files = this.files;
+    const div = document.getElementById('parseResult');
+    div.style.display = 'block';
+    let html = '<strong>📦 已选择 ' + files.length + ' 个文件:</strong><br>';
+    for (const f of files) {
+        html += '<span style="color:var(--text2);">• ' + f.name + ' (' + (f.size/1024/1024).toFixed(1) + ' MB)</span><br>';
+    }
+    div.innerHTML = html;
+});
+
+async function parseFile() {
     const file = this.files[0];
     if (!file) return;
-    
     const fd = new FormData();
     fd.append('ipa_file', file);
-    
-    document.getElementById('parseResult').style.display = 'block';
-    document.getElementById('parseName').textContent = '解析中...';
-    
+    const div = document.getElementById('parseResult');
+    div.style.display = 'block';
+    div.innerHTML = '<strong>📦 解析中...</strong>';
     try {
         const resp = await fetch('/api/ipa/parse', { method: 'POST', body: fd });
         const data = await resp.json();
         if (data.success) {
-            document.getElementById('parseName').textContent = data.name;
-            document.getElementById('parseVersion').textContent = data.version;
-            document.getElementById('parseBundle').textContent = data.bundle_id;
-            document.getElementById('parseSize').textContent = data.file_size;
-            
-            // Auto-select matching app
+            div.innerHTML = '<strong>📦 ' + data.name + '</strong> v' + data.version + ' <span class="mono">(' + data.bundle_id + ')</span> | ' + data.file_size;
             const sel = document.getElementById('appSelect');
             for (let o of sel.options) {
                 if (o.dataset.bundle === data.bundle_id) { sel.value = o.value; break; }
             }
         } else {
-            document.getElementById('parseName').textContent = '解析失败: ' + (data.error || '未知');
+            div.innerHTML = '<strong>❌ 解析失败:</strong> ' + (data.error || '未知');
         }
     } catch(e) {
-        document.getElementById('parseName').textContent = '网络错误';
+        div.innerHTML = '<strong>❌ 网络错误</strong>';
     }
-});
+}
 
-// Load saved settings (auto-fill Apple ID)
+// Load saved settings
 (async function() {
     try {
         const resp = await fetch('/api/settings');

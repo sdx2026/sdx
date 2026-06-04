@@ -85,6 +85,7 @@ $router->post('/apps', [AppController::class, 'create']);
 $router->get('/certs', function () { return Router::view('certs'); });
 $router->get('/profiles', function () { return Router::view('profiles'); });
 $router->get('/settings', function () { return Router::view('settings'); });
+$router->get('/ipas', function () { return Router::view('ipas'); });
 $router->get('/logs', function () {
     $pdo = \TfSigner\Core\Database::connection();
     $logs = $pdo->query("SELECT * FROM operation_logs ORDER BY created_at DESC LIMIT 100")->fetchAll();
@@ -106,7 +107,7 @@ $router->get('/ota/install/{task_id}', function ($taskId) {
         return Router::json(['error' => 'IPA not found'], 404);
     }
     
-    $ipaUrl = "http://bsj.appssign.cc/download/" . basename($task['output_ipa']);
+    $ipaUrl = "https://bsj.appssign.cc/download/" . basename($task['output_ipa']);
     $bundleId = $task['bundle_id'] ?? 'com.example.app';
     $appName = $task['app_name'] ?? 'App';
     $version = '1.0';
@@ -154,8 +155,10 @@ $router->get('/api/apps', [ApiController::class, 'listApps']);
 $router->get('/api/profiles', [ApiController::class, 'listProfiles']);
 $router->post('/api/profiles/upload', [ApiController::class, 'uploadProfile']);
 $router->post('/api/ipa/parse', [ApiController::class, 'parseIpa']);
-$router->get('/api/worker-status', [ApiController::class, 'getSettings']);
-$router->post('/api/worker-status', [ApiController::class, 'saveSettings']);
+$router->get('/api/ipas', [ApiController::class, 'listIpas']);
+$router->post('/api/ipas/delete', [ApiController::class, 'deleteIpa']);
+$router->get('/api/settings', [ApiController::class, 'getSettings']);
+$router->post('/api/settings', [ApiController::class, 'saveSettings']);
 $router->get('/api/worker-status', [ApiController::class, 'workerStatus']);
 $router->get('/api/dashboard-stats', [ApiController::class, 'dashboardStats']);
 

@@ -118,16 +118,8 @@ class ApiController
             }
         }
         $zip->close();
-        if (!$plist) return Router::json(['error' => 'Info.plist not found'], 400);
         $data = [];
-        if (PHP_OS_FAMILY === 'Darwin') {
-            $tmpf = sys_get_temp_dir() . '/p_' . uniqid();
-            file_put_contents($tmpf, $plist);
-            $json = shell_exec("plutil -convert json -o - " . escapeshellarg($tmpf) . " 2>/dev/null");
-            if ($json) $data = json_decode($json, true) ?: [];
-            @unlink($tmpf);
-        }
-        if (empty($data)) {
+        if ($plist) {
             if (preg_match('/<key>CFBundleIdentifier<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleIdentifier'] = $m[1];
             if (preg_match('/<key>CFBundleShortVersionString<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleShortVersionString'] = $m[1];
             if (preg_match('/<key>CFBundleDisplayName<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleDisplayName'] = $m[1];
@@ -147,7 +139,9 @@ class ApiController
         foreach ($pdo->query("SELECT * FROM settings") as $row) $s[$row['key']] = $row['value'];
         return Router::json(array_merge([
             'apple_id' => '', 'app_password' => '', 'github_token' => Config::get('github.token', ''),
-            'webhook_url' => Config::get('webhook.url', ''),
+            'webhook_url' => '', 'webhook_secret' => '',
+            'wechat_webhook' => '', 'dingtalk_webhook' => '', 'dingtalk_secret' => '',
+            'telegram_bot_token' => '', 'telegram_chat_id' => '',
         ], $s));
     }
 
@@ -156,6 +150,16 @@ class ApiController
         $input = json_decode(file_get_contents('php://input'), true);
         if (!$input) return Router::json(['error' => 'Invalid'], 400);
         $pdo = Database::connection();
+
+        // Handle password change
+        if (!empty($input['new_password'])) {
+            $hash = password_hash($input['new_password'], PASSWORD_BCRYPT);
+            $pdo->prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('admin_password', ?, datetime('now'))")
+                ->execute([$hash]);
+            unset($input['new_password'], $input['confirm_password']);
+            Router::logOp('password_change', 'Password updated');
+        }
+
         foreach ($input as $k => $v) {
             $pdo->prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES (?, ?, datetime('now'))")
                 ->execute([$k, $v]);
@@ -175,12 +179,9 @@ class ApiController
         $pdo = Database::connection();
         $stats = [];
         foreach ($pdo->query("SELECT status, COUNT(*) as cnt FROM tasks GROUP BY status") as $r) $stats[$r['status']] = $r['cnt'];
-        
         $stats += ['pending' => 0, 'processing' => 0, 'completed' => 0, 'failed' => 0];
         $apps = $pdo->query("SELECT COUNT(*) FROM apps")->fetchColumn();
         $workerRunning = !empty(trim(shell_exec("pgrep -f 'worker.php' 2>/dev/null") ?: ""));
-        
-        // Expiry alerts
         $alerts = [];
         foreach ($pdo->query("SELECT name, type, expires_at FROM certificates WHERE is_active = 1 AND expires_at IS NOT NULL") as $c) {
             if (!$c['expires_at']) continue;
@@ -192,9 +193,7 @@ class ApiController
             $days = (int)((strtotime($p['expires_at']) - time()) / 86400);
             if ($days < 30) $alerts[] = ['name' => ($p['app_name'] ?: '') . ' ' . $p['name'], 'type' => '描述文件', 'days' => $days, 'urgent' => $days < 7];
         }
-        
         $recent = $pdo->query("SELECT t.*, a.name as app_name FROM tasks t LEFT JOIN apps a ON t.app_id = a.id ORDER BY t.updated_at DESC LIMIT 10")->fetchAll();
-        
         return Router::json(['stats' => $stats, 'apps' => $apps, 'worker' => ['running' => $workerRunning], 'alerts' => $alerts, 'recent_tasks' => $recent]);
     }
 
@@ -214,5 +213,59 @@ class ApiController
         $dbOk = false;
         try { $pdo->query("SELECT 1"); $dbOk = true; } catch (\Throwable $e) {}
         return Router::json(['status' => $dbOk ? 'ok' : 'degraded', 'version' => Config::get('app.version'), 'php' => PHP_VERSION, 'database' => $dbOk ? 'connected' : 'error']);
+    }
+
+    // === IPA Management ===
+    public static function listIpas(): string
+    {
+        $ipaDir = Config::get('storage.ipas');
+        $files = [];
+        $totalSize = 0;
+        if (is_dir($ipaDir)) {
+            foreach (scandir($ipaDir) ?: [] as $f) {
+                if ($f === '.' || $f === '..') continue;
+                $path = $ipaDir . '/' . $f;
+                if (!is_file($path)) continue;
+                $size = filesize($path);
+                $totalSize += $size;
+                $pdo = Database::connection();
+                $taskCount = $pdo->prepare("SELECT COUNT(*) FROM tasks WHERE input_ipa = ? OR output_ipa = ?");
+                $taskCount->execute([$path, $path]);
+                $files[] = [
+                    'name' => $f,
+                    'size' => self::formatBytes($size),
+                    'size_bytes' => $size,
+                    'mtime' => date('Y-m-d H:i:s', filemtime($path)),
+                    'task_count' => (int)$taskCount->fetchColumn(),
+                ];
+            }
+        }
+        usort($files, fn($a, $b) => $b['size_bytes'] <=> $a['size_bytes']);
+        return Router::json([
+            'ipa_files' => $files,
+            'total_size' => self::formatBytes($totalSize),
+            'count' => count($files),
+        ]);
+    }
+
+    public static function deleteIpa(): string
+    {
+        $input = json_decode(file_get_contents('php://input'), true);
+        $filename = $input['filename'] ?? '';
+        if (!$filename) return Router::json(['error' => 'filename required'], 400);
+        $ipaDir = Config::get('storage.ipas');
+        $path = $ipaDir . '/' . basename($filename);
+        if (!file_exists($path)) return Router::json(['error' => 'File not found'], 404);
+        unlink($path);
+        Router::logOp('ipa_delete', $filename);
+        return Router::json(['success' => true]);
+    }
+
+    private static function formatBytes(int $bytes): string
+    {
+        if ($bytes >= 1073741824) return round($bytes / 1073741824, 2) . ' GB';
+        if ($bytes >= 1048576) return round($bytes / 1048576, 2) . ' MB';
+        if ($bytes >= 1024) return round($bytes / 1024, 2) . ' KB';
+        return $bytes . ' B';
     }
 }

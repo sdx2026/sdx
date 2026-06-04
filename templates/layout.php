@@ -61,6 +61,7 @@
             <li><a href="/" class="<?= ($current ?? '') === 'dashboard' ? 'active' : '' ?>">📊 仪表盘</a></li>
             <li><a href="/tasks" class="<?= ($current ?? '') === 'tasks' ? 'active' : '' ?>">📋 任务列表</a></li>
             <li><a href="/tasks/new" class="<?= ($current ?? '') === 'tasks_new' ? 'active' : '' ?>">➕ 新建任务</a></li>
+            <li><a href="/ipas" class="<?= ($current ?? '') === 'ipas' ? 'active' : '' ?>">📦 IPA 管理</a></li>
             <li><a href="/apps" class="<?= ($current ?? '') === 'apps' ? 'active' : '' ?>">📱 应用管理</a></li>
             <li><a href="/certs" class="<?= ($current ?? '') === 'certs' ? 'active' : '' ?>">🔐 证书管理</a></li>
             <li><a href="/profiles" class="<?= ($current ?? '') === 'profiles' ? 'active' : '' ?>">📄 描述文件</a></li>

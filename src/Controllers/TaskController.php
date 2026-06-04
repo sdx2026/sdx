@@ -18,9 +18,25 @@ class TaskController
 
     public static function index(): string
     {
-        $status = $_GET['status'] ?? '';
-        $tasks = self::service()->list($status ? ['status' => $status] : []);
-        return Router::view('tasks', ['tasks' => $tasks, 'status' => $status]);
+        $filters = [
+            'status' => $_GET['status'] ?? '',
+            'search' => $_GET['search'] ?? '',
+            'app_id' => $_GET['app_id'] ?? '',
+            'date_from' => $_GET['date_from'] ?? '',
+            'date_to' => $_GET['date_to'] ?? '',
+            'page' => $_GET['page'] ?? 1,
+            'per_page' => $_GET['per_page'] ?? 20,
+        ];
+        $result = self::service()->list($filters);
+        $apps = self::getAppsList();
+        return Router::view('tasks', [
+            'tasks' => $result['items'],
+            'total' => $result['total'],
+            'page' => $result['page'],
+            'total_pages' => $result['total_pages'],
+            'filters' => $filters,
+            'apps' => $apps,
+        ]);
     }
 
     public static function create(): string
@@ -33,35 +49,75 @@ class TaskController
             ]);
         }
 
-        $appId = $_POST['app_id'] ?? null;
         $type = $_POST['type'] ?? 'sign_and_upload';
         $certId = $_POST['cert_id'] ?? null;
         $profileId = $_POST['profile_id'] ?? null;
         $appleId = $_POST['apple_id'] ?? '';
         $appPassword = $_POST['app_password'] ?? '';
+        $uploadDir = \TfSigner\Core\Config::get('storage.ipas');
 
-        // Handle IPA upload
-        $inputIpa = '';
-        if (!empty($_FILES['ipa_file']['tmp_name'])) {
-            $uploadDir = \TfSigner\Core\Config::get('storage.ipas');
-            $destName = 'input_' . time() . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $_FILES['ipa_file']['name']);
-            $inputIpa = $uploadDir . '/' . $destName;
-            move_uploaded_file($_FILES['ipa_file']['tmp_name'], $inputIpa);
+        // Handle batch upload (multiple files)
+        $files = $_FILES['ipa_files'] ?? null;
+        $singleFile = $_FILES['ipa_file'] ?? null;
+        $created = [];
+        $errors = [];
+
+        $fileEntries = [];
+        if (!empty($files['tmp_name']) && is_array($files['tmp_name'])) {
+            for ($i = 0; $i < count($files['tmp_name']); $i++) {
+                if (!empty($files['tmp_name'][$i])) {
+                    $fileEntries[] = [
+                        'tmp_name' => $files['tmp_name'][$i],
+                        'name' => $files['name'][$i],
+                    ];
+                }
+            }
+        } elseif (!empty($singleFile['tmp_name'])) {
+            $fileEntries[] = $singleFile;
         }
 
-        if (!$inputIpa) {
+        if (empty($fileEntries)) {
             return Router::json(['error' => 'IPA file required'], 400);
         }
 
-        $task = self::service()->create([
-            'app_id' => $appId,
-            'type' => $type,
-            'input_ipa' => $inputIpa,
-            'cert_id' => $certId,
-            'profile_id' => $profileId,
-            'apple_id' => $appleId,
-            'app_password' => $appPassword,
-        ]);
+        // Check if it's a batch submit
+        $isBatch = count($fileEntries) > 1 || isset($_POST['batch']);
+
+        foreach ($fileEntries as $entry) {
+            try {
+                $destName = 'input_' . time() . '_' . rand(1000, 9999) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $entry['name']);
+                $inputIpa = $uploadDir . '/' . $destName;
+                move_uploaded_file($entry['tmp_name'], $inputIpa);
+
+                // Try to auto-detect app by parsing IPA
+                $appId = $_POST['app_id'] ?? null;
+                if (!$appId) {
+                    $appId = self::detectAppFromIpa($inputIpa);
+                }
+
+                $task = self::service()->create([
+                    'app_id' => $appId,
+                    'type' => $type,
+                    'input_ipa' => $inputIpa,
+                    'cert_id' => $certId,
+                    'profile_id' => $profileId,
+                    'apple_id' => $appleId,
+                    'app_password' => $appPassword,
+                ]);
+                $created[] = $task['id'];
+            } catch (\Throwable $e) {
+                $errors[] = $entry['name'] . ': ' . $e->getMessage();
+            }
+        }
+
+        if ($isBatch) {
+            return Router::json([
+                'success' => count($errors) === 0,
+                'created' => $created,
+                'errors' => $errors,
+                'message' => '创建 ' . count($created) . ' 个任务' . (count($errors) ? '，' . count($errors) . ' 个失败' : ''),
+            ]);
+        }
 
         Router::redirect('/tasks');
         return '';
@@ -74,15 +130,6 @@ class TaskController
             return Router::json(['error' => 'Task not found'], 404);
         }
         return Router::view('task_detail', ['task' => $task]);
-    }
-
-    public static function status(int $id): string
-    {
-        $task = self::service()->get($id);
-        if (!$task) {
-            return Router::json(['error' => 'Task not found'], 404);
-        }
-        return Router::json($task);
     }
 
     public static function delete(int $id): string
@@ -98,6 +145,32 @@ class TaskController
             ->execute([$id]);
         Router::redirect('/tasks');
         return '';
+    }
+
+    private static function detectAppFromIpa(string $ipaPath): ?int
+    {
+        try {
+            $zip = new \ZipArchive();
+            if ($zip->open($ipaPath) !== true) return null;
+            $plist = null;
+            for ($i = 0; $i < $zip->numFiles; $i++) {
+                if (preg_match('#^Payload/[^/]+\.app/Info\.plist$#', $zip->getNameIndex($i))) {
+                    $plist = $zip->getFromIndex($i);
+                    break;
+                }
+            }
+            $zip->close();
+            if (!$plist) return null;
+            if (preg_match('/<key>CFBundleIdentifier<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) {
+                $bundleId = $m[1];
+                $pdo = \TfSigner\Core\Database::connection();
+                $stmt = $pdo->prepare("SELECT id FROM apps WHERE bundle_id = ?");
+                $stmt->execute([$bundleId]);
+                $row = $stmt->fetch();
+                return $row ? (int)$row['id'] : null;
+            }
+        } catch (\Throwable $e) {}
+        return null;
     }
 
     private static function getAppsList(): array

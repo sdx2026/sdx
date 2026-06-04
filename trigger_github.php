@@ -35,7 +35,7 @@ if (!$cert || !$profile) {
     die("Certificate or profile not found\n");
 }
 
-$baseUrl = "http://bsj.appssign.cc";
+$baseUrl = "https://bsj.appssign.cc";
 
 $payload = [
     "ref" => "main",
