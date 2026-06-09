@@ -69,8 +69,8 @@
             <?php if ($isAdmin || in_array("settings", $userPerms)): ?><li><a href="/settings" class="<?= ($current ?? '') === 'settings' ? 'active' : '' ?>">⚙️ 设置</a></li><?php endif; ?>
 <?php if ($isAdmin || in_array("stats", $userPerms)): ?><li><a href="/stats" class="<?= ($current ?? '') === 'stats' ? 'active' : '' ?>">📈 统计图表</a></li><?php endif; ?>            <?php if ($isAdmin || in_array("users", $userPerms)): ?><li><a href="/users" class="<?= ($current ?? '') === 'users' ? 'active' : '' ?>">👥 用户管理</a></li><?php endif; ?>
             <?php if ($isAdmin || in_array("logs", $userPerms)): ?><li><a href="/logs" class="<?= ($current ?? '') === 'logs' ? 'active' : '' ?>">📝 操作日志</a></li><?php endif; ?>
+            <li><a href="/help" class="<?= ($current ?? '') === 'help' ? 'active' : '' ?>">📖 使用教程</a></li>
         </ul>
-        <li><a href="/help" class="<?= ($current ?? '') === 'help' ? 'active' : '' ?>">📖 使用教程</a></li>
         <a href="/logout" class="btn btn-outline btn-sm" style="margin-top:auto;text-align:center;">🚪 退出登录</a>
     </aside>
     <main class="main"><?= $content ?? '' ?></main>

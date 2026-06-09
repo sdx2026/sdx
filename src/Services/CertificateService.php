@@ -35,13 +35,14 @@ class CertificateService
         chmod($keyPath, 0600);
 
         // Create CSR
-        $dn = [
-            'commonName' => $commonName,
-            'organizationName' => $teamId ?: 'TF Signer',
-        ];
-        if ($email) $dn['emailAddress'] = $email;
+        $dn = ['commonName' => $commonName];
 
-        $csr = openssl_csr_new($dn, $privateKey, ['digest_alg' => 'sha256']);
+        $sslConfig = '/etc/pki/tls/openssl.cnf';
+        if (!file_exists($sslConfig)) $sslConfig = '/etc/ssl/openssl.cnf';
+        $csrOpts = ['digest_alg' => 'sha256'];
+        if (file_exists($sslConfig)) $csrOpts['config'] = $sslConfig;
+
+        $csr = openssl_csr_new($dn, $privateKey, $csrOpts);
         openssl_csr_export($csr, $csrOutput);
 
         // Self-sign certificate
@@ -115,6 +116,7 @@ class CertificateService
 
             $certs = [];
             openssl_pkcs12_read($p12Data, $certs, $password);
+            if (!$certs || empty($certs['pkey'])) { throw new \RuntimeException('Failed to parse P12 certificate. Wrong password or corrupt file.'); }
 
             $keyPath = "{$certsDir}/{$baseName}.key";
             file_put_contents($keyPath, $certs['pkey']);
@@ -196,13 +198,19 @@ class CertificateService
         $cert = $this->get($id);
         if (!$cert) return false;
 
+        $pdo = Database::connection();
+
+        // Clean up related provisioning profiles
+        $pdo->prepare("DELETE FROM provisioning_profiles WHERE cert_id = ?")->execute([$id]);
+
+        // Nullify cert references in tasks (keep task history)
+        $pdo->prepare("UPDATE tasks SET cert_id = NULL WHERE cert_id = ?")->execute([$id]);
+
         // Delete files
         @unlink($cert['cert_path']);
         @unlink($cert['key_path']);
 
-        $pdo = Database::connection();
-        $stmt = $pdo->prepare("DELETE FROM certificates WHERE id = ?");
-        $stmt->execute([$id]);
+        $pdo->prepare("DELETE FROM certificates WHERE id = ?")->execute([$id]);
 
         Logger::info("Certificate deleted", ['id' => $id]);
         return true;

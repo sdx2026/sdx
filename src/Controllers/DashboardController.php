@@ -25,8 +25,8 @@ class DashboardController
             ORDER BY t.updated_at DESC LIMIT 10
         ")->fetchAll();
 
-        $appCount = $pdo->query("SELECT COUNT(*) FROM apps")->fetchColumn();
-        $certCount = $pdo->query("SELECT COUNT(*) FROM certificates")->fetchColumn();
+        $appCount = (int) $pdo->query("SELECT COUNT(*) FROM apps")->fetchColumn();
+        $certCount = (int) $pdo->query("SELECT COUNT(*) FROM certificates")->fetchColumn();
 
         return Router::view('dashboard', [
             'counts' => $counts,

@@ -10,6 +10,13 @@ class App
         ini_set('display_errors', '0');
         date_default_timezone_set(Config::get('app.timezone', 'UTC'));
 
+        // Session security
+        ini_set('session.cookie_httponly', '1');
+        ini_set('session.cookie_samesite', 'Lax');
+        if (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') {
+            ini_set('session.cookie_secure', '1');
+        }
+
         // Load config
         Config::load(__DIR__ . '/../../config/config.php');
 

@@ -6,24 +6,35 @@
     <div class="stat-card processing"><div class="stat-value">-</div><div class="stat-label">处理中</div></div>
     <div class="stat-card completed"><div class="stat-value">-</div><div class="stat-label">已完成</div></div>
     <div class="stat-card failed"><div class="stat-value">-</div><div class="stat-label">失败</div></div>
-    <div class="stat-card"><div class="stat-value">-</div><div class="stat-label">应用</div></div>
+    <div class="stat-card apps"><div class="stat-value">-</div><div class="stat-label">应用</div></div>
     <div class="stat-card"><div class="stat-value" id="workerStatus">-</div><div class="stat-label" id="workerLabel">Worker</div></div>
 </div>
+<div id="accountHealth"></div>
 <div id="alertArea"></div>
 <h2>📋 最近任务</h2>
 <div id="recentTasks">加载中...</div>
 </div>
 
 <script>
+function esc(s) { const d = document.createElement("div"); d.textContent = s; return d.innerHTML; }
+
 async function refresh() {
     // Fetch dashboard stats
-    const resp = await fetch('/api/dashboard-stats');
-    const data = await resp.json();
+    let data;
+    try {
+        const resp = await fetch('/api/dashboard-stats');
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        data = await resp.json();
+    } catch (e) {
+        document.getElementById("recentTasks").innerHTML = '<div class="empty-state"><p>⚠️ 数据加载失败: ' + e.message + '</p><p class="text-muted">请确认已登录，或 <a href="/login">点此重新登录</a></p></div>';
+        return;
+    }
     const s = data.stats || {};
     document.querySelector('.pending .stat-value').textContent = s.pending || 0;
     document.querySelector('.processing .stat-value').textContent = s.processing || 0;
     document.querySelector('.completed .stat-value').textContent = s.completed || 0;
     document.querySelector('.failed .stat-value').textContent = s.failed || 0;
+    document.querySelector('.apps .stat-value').textContent = data.apps || 0;
     
     // Worker status
     const workerEl = document.getElementById('workerStatus');
@@ -49,6 +60,27 @@ async function refresh() {
         }
         alertHtml += '</ul></div>';
     }
+        // Account health
+    const ah = data.account_health || {total:0, active:0, blocked:0};
+    const ahEl = document.getElementById('accountHealth');
+    if (ah.total > 0) {
+        let ahHtml = '<div class="card" style="margin-bottom:20px;"><h2>🍎 开发者账号健康度</h2><div style="display:flex;gap:16px;margin:12px 0;">';
+        ahHtml += '<div style="flex:1;background:var(--surface2);padding:12px;border-radius:var(--radius);text-align:center;"><div style="font-size:1.5rem;color:var(--green);">' + ah.active + '</div><div class="text-muted">正常</div></div>';
+        ahHtml += '<div style="flex:1;background:var(--surface2);padding:12px;border-radius:var(--radius);text-align:center;"><div style="font-size:1.5rem;color:' + (ah.blocked>0?'var(--red)':'var(--text2)') + ';">' + ah.blocked + '</div><div class="text-muted">异常</div></div>';
+        ahHtml += '</div>';
+        if (ah.accounts) {
+            ahHtml += '<table style="margin-top:8px;"><thead><tr><th>账号</th><th>备注</th><th>状态</th></tr></thead><tbody>';
+            for (const a of ah.accounts) {
+                ahHtml += '<tr><td>' + esc(a.apple_id) + '</td><td>' + esc(a.note||'-') + '</td><td>' + (a.status==='active'?'<span class="badge badge-completed">✅ 正常</span>':'<span class="badge badge-failed">🚫 异常</span>') + '</td></tr>';
+            }
+            ahHtml += '</tbody></table>';
+        }
+        ahHtml += '</div>';
+        ahEl.innerHTML = ahHtml;
+    } else {
+        ahEl.innerHTML = '<div class="card" style="margin-bottom:20px;border-color:var(--amber);"><h2>🍎 开发者账号健康度</h2><div class="empty-state" style="padding:20px;"><p>暂未添加 Apple 开发者账号</p><a href="/settings" class="btn btn-primary btn-sm">去设置页添加</a></div></div>';
+    }
+    
     document.getElementById('alertArea').innerHTML = alertHtml;
     
     // Recent tasks

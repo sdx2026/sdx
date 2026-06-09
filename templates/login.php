@@ -30,7 +30,7 @@
         <input type="password" name="password" placeholder="密码" required>
         <button type="submit">登 录</button>
     </form>
-    <p style="margin-top:20px;color:#555;font-size:0.75rem;">默认账号: admin / admin123</p>
+
 </div>
 </body>
 </html>

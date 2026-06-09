@@ -38,38 +38,42 @@ $router = new Router();
 // === Auth middleware (skip for login page, API, and download) ===
 $router->addMiddleware(function () {
     $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-    $publicPaths = ['/login', '/api/health', '/api/tasks/', '/api/worker-status', '/download/'];
+    
+    // Public paths: no auth needed
+    $publicPaths = ['/login', '/api/health', '/api/tasks/', '/api/worker-status', '/download/', '/ota/'];
     foreach ($publicPaths as $p) {
         if (strpos($uri, $p) === 0) return;
     }
-    // Allow callback without auth
+    // Allow callback without auth (GitHub Actions webhook)
     if (strpos($uri, '/callback') !== false) return;
-    // Allow DELETE API without auth (called by JS)
-    if ($_SERVER['REQUEST_METHOD'] === 'DELETE') return;
     
+    // Must be logged in first
+    if (!Router::isLoggedIn()) {
+        Router::redirect('/login');
+        return false;
+    }
     
     // Check user permissions for restricted pages (non-admin only)
-    $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
-    $role = $_SESSION['tfsigner_role'] ?? 'admin';
+    $role = $_SESSION['tfsigner_role'] ?? 'user';
     if ($role !== 'admin') {
-        $perms = json_decode($_SESSION['tfsigner_perms'] ?? '[]', true);
+        $perms = json_decode($_SESSION['tfsigner_perms'] ?? '[]', true) ?: [];
         $menuMap = [
             '/' => 'dashboard', '/tasks' => 'tasks', '/tasks/new' => 'tasks_new',
             '/ipas' => 'ipas', '/apps' => 'apps', '/certs' => 'certs',
             '/profiles' => 'profiles', '/stats' => 'stats', '/settings' => 'settings',
             '/users' => 'users', '/logs' => 'logs',
         ];
-        $permKey = $menuMap[$uri] ?? null;
+// Normalize URI for sub-page matching (e.g. /tasks/42 => /tasks)
+        $normUri = preg_replace("#^(/tasks)/[0-9]+$#", "$1", $uri);
+        $permKey = $menuMap[$normUri] ?? $menuMap[$uri] ?? null;
         if ($permKey && !in_array($permKey, $perms)) {
-            Router::redirect('/');
+            http_response_code(403);
+            echo '<h2 style="text-align:center;margin-top:100px;color:#ef4444;">⛔ No permission</h2>';
             return false;
         }
     }
-    if (!Router::isLoggedIn()) {
-        Router::redirect('/login');
-        return false;
-    }
 });
+
 
 // === Login page ===
 $router->get('/login', function () {
@@ -77,19 +81,43 @@ $router->get('/login', function () {
     return Router::view('login');
 });
 $router->post('/login', function () {
+    $username = $_POST['username'] ?? '';
     $password = $_POST['password'] ?? '';
-    if (Router::verifyPassword($password)) {
+    $pdo = \TfSigner\Core\Database::connection();
+    
+    // Try users table first
+    $stmt = $pdo->prepare("SELECT * FROM users WHERE username = ?");
+    $stmt->execute([$username]);
+    $user = $stmt->fetch();
+    
+    if ($user && password_verify($password, $user['password_hash'])) {
         session_start();
+        session_regenerate_id(true);
         $_SESSION['tfsigner_auth'] = true;
-        Router::logOp('login', 'User logged in');
+        $_SESSION['tfsigner_role'] = $user['role'] ?? 'user';
+        $_SESSION['tfsigner_perms'] = $user['permissions'] ?? '[]';
+        $pdo->prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?")->execute([$user['id']]);
+        Router::logOp('login', $username);
         Router::redirect('/');
-    } else {
-        return Router::view('login', ['error' => '密码错误']);
+        return '';
     }
-    return '';
+    
+    // Fallback: admin password from settings
+    if (Router::verifyPassword($password)) {
+        if (session_status() === PHP_SESSION_NONE) session_start();
+        session_regenerate_id(true);
+        $_SESSION['tfsigner_auth'] = true;
+        $_SESSION['tfsigner_role'] = 'admin';
+        $_SESSION['tfsigner_perms'] = '[]';
+        Router::logOp('login', 'admin (legacy)');
+        Router::redirect('/');
+        return '';
+    }
+    
+    return Router::view('login', ['error' => '用户名或密码错误']);
 });
 $router->get('/logout', function () {
-    session_start();
+    if (session_status() === PHP_SESSION_NONE) session_start();
     session_destroy();
     Router::logOp('logout', 'User logged out');
     Router::redirect('/login');
@@ -121,17 +149,18 @@ $router->get('/tasks/{id}/retry', [TaskController::class, 'retry']);
 // === OTA install ===
 $router->get('/ota/install/{task_id}', function ($taskId) {
     $pdo = \TfSigner\Core\Database::connection();
-    $task = $pdo->prepare("SELECT * FROM tasks WHERE id = ?");
+    $task = $pdo->prepare("SELECT t.*, a.bundle_id, a.name as app_name FROM tasks t LEFT JOIN apps a ON t.app_id = a.id WHERE t.id = ?");
     $task->execute([(int)$taskId]);
     $task = $task->fetch();
     if (!$task || !$task['output_ipa']) {
         return Router::json(['error' => 'IPA not found'], 404);
     }
     
-    $ipaUrl = "https://bsj.appssign.cc/download/" . basename($task['output_ipa']);
+    $baseUrl = \TfSigner\Core\Config::get('app.url', 'https://bsj.appssign.cc');
+    $ipaUrl = $baseUrl . "/download/" . basename($task['output_ipa']);
     $bundleId = $task['bundle_id'] ?? 'com.example.app';
     $appName = $task['app_name'] ?? 'App';
-    $version = '1.0';
+    $version = $task['override_version'] ?? '1.0';
     
     $plist = '<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -183,6 +212,7 @@ $router->post('/api/certs/apple-generate', [ApiController::class, 'appleGenerate
 $router->post('/api/profiles/apple-generate', [ApiController::class, 'appleGenerateProfile']);
 $router->get('/api/apple-accounts', [ApiController::class, 'listAppleAccounts']);
 $router->post('/api/apple-accounts', [ApiController::class, 'createAppleAccount']);
+$router->post('/api/apple-accounts/{id}/retry', [ApiController::class, 'retryAppleAccount']);
 $router->get('/api/api-keys', [ApiController::class, 'listApiKeys']);
 $router->post('/api/api-keys', [ApiController::class, 'createApiKey']);
 $router->get('/api/ipas', [ApiController::class, 'listIpas']);
@@ -190,6 +220,7 @@ $router->post('/api/ipas/delete', [ApiController::class, 'deleteIpa']);
 $router->get('/api/settings', [ApiController::class, 'getSettings']);
 $router->post('/api/settings', [ApiController::class, 'saveSettings']);
 $router->get('/api/worker-status', [ApiController::class, 'workerStatus']);
+$router->post('/api/logs/clear', [ApiController::class, 'clearLogs']);
 $router->get('/api/dashboard-stats', [ApiController::class, 'dashboardStats']);
 
 // === POST delete routes ===
@@ -201,17 +232,41 @@ $router->post('/tasks/{id}/delete', function($id) {
     return '';
 });
 
-// === File download ===
+// === File download (with task_id token auth for GitHub Actions) ===
 $router->get('/download/{file}', function($file) {
     $storageDirs = [
         \TfSigner\Core\Config::get('storage.ipas'),
         \TfSigner\Core\Config::get('storage.certs'),
     ];
+    $safeName = basename($file);
+    if ($safeName === '.' || $safeName === '..' || empty($safeName)) {
+        http_response_code(400);
+        return Router::json(['error' => 'Invalid filename'], 400);
+    }
+    // Auth: allow if user is logged in OR valid task_id token provided
+    $isAuthorized = Router::isLoggedIn();
+    if (!$isAuthorized && !empty($_GET['task_id'])) {
+        $tid = (int)$_GET['task_id'];
+        $pdo = \TfSigner\Core\Database::connection();
+        $taskRow = $pdo->prepare("SELECT id FROM tasks WHERE id = ? AND status IN ('pending','processing') LIMIT 1");
+        $taskRow->execute([$tid]);
+        if ($taskRow->fetch()) {
+            $isAuthorized = true;
+        }
+    }
+    if (!$isAuthorized) {
+        http_response_code(403);
+        return Router::json(['error' => 'Forbidden: login or valid task token required'], 403);
+    }
     foreach ($storageDirs as $dir) {
-        $path = $dir . '/' . basename($file);
-        if (file_exists($path)) {
-            header('Content-Type: ' . (mime_content_type($path) ?: 'application/octet-stream'));
+        $path = realpath($dir) . '/' . $safeName;
+        if (file_exists($path) && strpos(realpath($path), realpath($dir)) === 0) {
+            // Determine content type from extension
+            $ext = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+            $mimeMap = ['ipa' => 'application/octet-stream', 'pem' => 'application/x-pem-file', 'p12' => 'application/x-pkcs12', 'key' => 'application/pkcs8', 'mobileprovision' => 'application/x-apple-aspen-config'];
+            header('Content-Type: ' . ($mimeMap[$ext] ?? 'application/octet-stream'));
             header('Content-Length: ' . filesize($path));
+            header('Content-Disposition: attachment; filename="' . $safeName . '"');
             readfile($path);
             return '';
         }
@@ -229,6 +284,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     if (preg_match('#^/api/users/(\d+)$#', $uri, $m)) { echo ApiController::deleteUser((int)$m[1]); exit; }
     if (preg_match('#^/api/apple-accounts/(\d+)$#', $uri, $m)) { echo ApiController::deleteAppleAccount((int)$m[1]); exit; }
     if (preg_match('#^/api/api-keys/(\d+)$#', $uri, $m)) { echo ApiController::deleteApiKey((int)$m[1]); exit; }
+    if (preg_match('#^/api/profiles/(\d+)$#', $uri, $m)) { echo ApiController::deleteProfile((int)$m[1]); exit; }
 }
 
 $router->dispatch();

@@ -19,12 +19,28 @@
 <!-- ====== 快速开始 ====== -->
 <h2>🚀 快速开始</h2>
 
-<div class="step"><span class="step-num">1</span> 打开 <code>https://bsj.appssign.cc</code>，默认账号 <code>admin</code> 密码 <code>admin123</code></div>
+<div class="step"><span class="step-num">1</span> 打开 <code>https://bsj.appssign.cc</code>，默认账号 <code>admin</code> 密码为安装时设置的密码</div>
 <div class="step"><span class="step-num">2</span> 去「设置」页面配置 Apple 账号和 GitHub Token</div>
 <div class="step"><span class="step-num">3</span> 去「应用管理」添加你的 App（Bundle ID 必须和 Xcode 项目一致）</div>
 <div class="step"><span class="step-num">4</span> 去「证书管理」导入签名证书</div>
 <div class="step"><span class="step-num">5</span> 去「描述文件」上传 .mobileprovision</div>
 <div class="step"><span class="step-num">6</span> 去「新建任务」上传 IPA → 填构建号 → 创建 → 等待签名完成</div>
+
+
+<!-- ====== 获取 Team ID 和 Team 名称 ====== -->
+<h2>🔍 如何获取 Team ID 和 Team 名称</h2>
+
+<h3>方法一：Apple Developer 网站</h3>
+<div class="step"><span class="step-num">1</span> 打开 <a href="https://developer.apple.com/account" target="_blank">developer.apple.com/account</a>，登录开发者账号</div>
+<div class="step"><span class="step-num">2</span> 点左侧菜单 <code>Membership</code></div>
+<div class="step"><span class="step-num">3</span> 页面右侧就能看到：<code>Team ID</code>（10位字母数字）和 <code>Team Name</code>（公司名或个人名）</div>
+
+<h3>方法二：App Store Connect</h3>
+<div class="step"><span class="step-num">1</span> 打开 <a href="https://appstoreconnect.apple.com" target="_blank">appstoreconnect.apple.com</a>，登录</div>
+<div class="step"><span class="step-num">2</span> 点底部左下角用户头像/账号名</div>
+<div class="step"><span class="step-num">3</span> 弹出菜单中即可看到 Team ID 和 Team Name</div>
+
+<div class="tip">💡 <b>这两个字段在系统里可以不填</b>——如果只是手动上传 .p12 证书和 .mobileprovision 描述文件签名，留空也没关系。签名用的是证书+描述文件，不依赖 Team ID。最关键是 <b>Bundle ID 必须填对</b>。</div>
 
 <!-- ====== 证书获取教程 ====== -->
 <h2>🔐 如何获取签名证书 (.p12)</h2>

@@ -59,6 +59,7 @@ class Database
                 expires_at DATETIME,
                 team_id TEXT NOT NULL DEFAULT '',
                 is_active INTEGER DEFAULT 1,
+                apple_cert_id TEXT DEFAULT '',
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ");
@@ -104,6 +105,10 @@ class Database
                 finished_at DATETIME,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                override_version TEXT DEFAULT '',
+                override_build TEXT DEFAULT '',
+                apple_account_id INTEGER,
+                api_key_id INTEGER,
                 FOREIGN KEY (app_id) REFERENCES apps(id),
                 FOREIGN KEY (cert_id) REFERENCES certificates(id),
                 FOREIGN KEY (profile_id) REFERENCES provisioning_profiles(id)
@@ -128,5 +133,57 @@ class Database
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                username TEXT UNIQUE NOT NULL,
+                password_hash TEXT NOT NULL,
+                role TEXT DEFAULT 'user',
+                permissions TEXT DEFAULT '[]',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                last_login DATETIME
+            )
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS apple_accounts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                apple_id TEXT NOT NULL UNIQUE,
+                app_password TEXT NOT NULL,
+                note TEXT DEFAULT '',
+                status TEXT DEFAULT 'active',
+                last_error TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS api_keys (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                issuer_id TEXT NOT NULL,
+                key_id TEXT NOT NULL,
+                key_content TEXT NOT NULL,
+                note TEXT DEFAULT '',
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+
+        $pdo->exec("
+            CREATE TABLE IF NOT EXISTS operation_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                action TEXT NOT NULL,
+                detail TEXT,
+                ip TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+        ");
+
+        // Insert default admin if no users exist
+        $count = $pdo->query("SELECT COUNT(*) FROM users")->fetchColumn();
+        if ($count == 0) {
+            $pdo->prepare("INSERT INTO users (username, password_hash, role) VALUES ('admin', ?, 'admin')")
+                ->execute([password_hash('admin123', PASSWORD_BCRYPT)]);
+        }
     }
 }

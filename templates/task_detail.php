@@ -27,10 +27,38 @@
             <strong>📱 OTA 安装</strong>
             <p class="text-muted" style="margin:8px 0;">iPhone 扫码直接安装（需企业证书）</p>
             <code class="mono" style="word-break:break-all;font-size:0.75rem;background:var(--bg);padding:6px;display:block;border-radius:4px;">
-                itms-services://?action=download-manifest&url=http://bsj.appssign.cc/ota/install/<?= $task['id'] ?>
+                itms-services://?action=download-manifest&url=<?= \TfSigner\Core\Config::get('app.url', 'https://bsj.appssign.cc') ?>/ota/install/<?= $task['id'] ?>
             </code>
         </div>
     </div>
+</div>
+<?php endif; ?>
+
+<?php 
+// Show result with TestFlight link if available
+$resultText = $task['result'] ?? '';
+$tfLink = '';
+if ($resultText && preg_match('/https:\/\/testflight\.apple\.com\/join\/[A-Za-z0-9]+/', $resultText, $m)) {
+    $tfLink = $m[0];
+}
+?>
+<?php if ($tfLink): ?>
+<div class="card" style="border-color: var(--accent);background:rgba(59,130,246,0.08);">
+    <h2 style="color: var(--accent);">🚀 TestFlight 公开链接</h2>
+    <div style="background:var(--surface2);padding:16px;border-radius:var(--radius);margin-top:8px;">
+        <p class="text-muted" style="margin-bottom:8px;">审核通过后用户可通过此链接安装测试：</p>
+        <a href="<?= htmlspecialchars($tfLink) ?>" target="_blank" style="color:var(--accent);font-size:1.1rem;word-break:break-all;">
+            <?= htmlspecialchars($tfLink) ?>
+        </a>
+        <button onclick="navigator.clipboard.writeText('<?= htmlspecialchars($tfLink) ?>');this.textContent='已复制!';setTimeout(()=>this.textContent='复制',2000)" 
+            class="btn btn-primary btn-sm" style="margin-left:12px;">复制</button>
+    </div>
+    <p style="margin-top:8px;color:var(--amber);font-size:0.85rem;">⏳ Apple 审核通常需要24-48小时，审核通过后链接自动生效</p>
+</div>
+<?php elseif ($task['status'] === 'completed' && $resultText): ?>
+<div class="card" style="border-color: var(--green);">
+    <h2 style="color: var(--green);">✅ 结果</h2>
+    <pre style="white-space:pre-wrap;word-break:break-all;color:var(--text);margin:8px 0;"><?= htmlspecialchars($resultText) ?></pre>
 </div>
 <?php endif; ?>
 
@@ -54,6 +82,21 @@
         <tr><td class="text-muted">创建</td><td><?= $task['created_at'] ?></td></tr>
         <tr><td class="text-muted">开始</td><td><?= $task['started_at'] ?: '-' ?></td></tr>
         <tr><td class="text-muted">完成</td><td><?= $task['finished_at'] ?: '-' ?></td></tr>
+        <?php if (!empty($task['apple_account_id'])): 
+            $acct = \TfSigner\Core\Database::connection()->prepare("SELECT apple_id, note FROM apple_accounts WHERE id = ?");
+            $acct->execute([$task['apple_account_id']]); $a = $acct->fetch();
+        ?>
+        <tr><td class="text-muted">Apple 账号</td><td><?= htmlspecialchars($a['apple_id'] ?? '#'.$task['apple_account_id']) ?> <?= $a['note'] ? '(' . htmlspecialchars($a['note']) . ')' : '' ?></td></tr>
+        <?php endif; ?>
+        <?php if (!empty($task['api_key_id'])): 
+            $key = \TfSigner\Core\Database::connection()->prepare("SELECT key_id, note FROM api_keys WHERE id = ?");
+            $key->execute([$task['api_key_id']]); $k = $key->fetch();
+        ?>
+        <tr><td class="text-muted">API 密钥</td><td><?= htmlspecialchars($k['key_id'] ?? '#'.$task['api_key_id']) ?> <?= $k['note'] ? '(' . htmlspecialchars($k['note']) . ')' : '' ?></td></tr>
+        <?php endif; ?>
+        <?php if (!empty($task['result'])): ?>
+        <tr><td class="text-muted">结果</td><td style="color:var(--green);"><?= htmlspecialchars(mb_substr($task['result'], 0, 200)) ?><?= mb_strlen($task['result']) > 200 ? '...' : '' ?></td></tr>
+        <?php endif; ?>
     </table>
 </div>
 

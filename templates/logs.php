@@ -3,6 +3,7 @@
 <div class="flex-row mb-20">
     <span class="text-muted">最近 100 条记录</span>
     <button onclick="location.reload()" class="btn btn-outline btn-sm" style="margin-left:auto;">🔄 刷新</button>
+    <button onclick="clearAllLogs()" class="btn btn-danger btn-sm" style="margin-left:8px;">🗑 一键清理</button>
 </div>
 <table>
     <thead><tr><th>ID</th><th>操作</th><th>详情</th><th>IP</th><th>时间</th></tr></thead>
@@ -21,4 +22,13 @@
         <?php endif; ?>
     </tbody>
 </table>
+<script>
+async function clearAllLogs() {
+    if (!confirm('确定要删除全部操作日志吗？此操作不可恢复！')) return;
+    const resp = await fetch('/api/logs/clear', { method: 'POST' });
+    const r = await resp.json();
+    if (r.success) { location.reload(); }
+    else { alert('清理失败: ' + r.error); }
+}
+</script>
 <?php $content = ob_get_clean(); require __DIR__ . '/layout.php'; ?>

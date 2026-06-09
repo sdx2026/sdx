@@ -46,6 +46,8 @@ class TaskController
                 'apps' => self::getAppsList(),
                 'certs' => self::getCertsList(),
                 'profiles' => self::getProfilesList(),
+                'appleAccounts' => self::getAppleAccounts(),
+                'apiKeys' => self::getApiKeys(),
             ]);
         }
 
@@ -54,6 +56,8 @@ class TaskController
         $profileId = $_POST['profile_id'] ?? null;
         $appleId = $_POST['apple_id'] ?? '';
         $appPassword = $_POST['app_password'] ?? '';
+        $appleAccountId = $_POST['apple_account_id'] ?? null;
+        $apiKeyId = $_POST['api_key_id'] ?? null;
         $uploadDir = \TfSigner\Core\Config::get('storage.ipas');
 
         // Handle batch upload (multiple files)
@@ -101,8 +105,12 @@ class TaskController
                     'input_ipa' => $inputIpa,
                     'cert_id' => $certId,
                     'profile_id' => $profileId,
-                    'apple_id' => $appleId,
-                    'app_password' => $appPassword,
+                    'apple_id' => $appleAccountId ? '' : $appleId,
+                    'app_password' => $appleAccountId ? '' : $appPassword,
+                    'override_version' => $_POST['override_version'] ?? '',
+                    'override_build' => $_POST['override_build'] ?? '',
+                    'apple_account_id' => $appleAccountId ? (int)$appleAccountId : null,
+                    'api_key_id' => $apiKeyId ? (int)$apiKeyId : null,
                 ]);
                 $created[] = $task['id'];
             } catch (\Throwable $e) {
@@ -189,5 +197,19 @@ class TaskController
     {
         $pdo = \TfSigner\Core\Database::connection();
         return $pdo->query("SELECT id, name, bundle_id, profile_type FROM provisioning_profiles WHERE is_active = 1 ORDER BY name")->fetchAll();
+    }
+
+    private static function getAppleAccounts(): array
+    {
+        $pdo = \TfSigner\Core\Database::connection();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS apple_accounts (id INTEGER PRIMARY KEY AUTOINCREMENT, apple_id TEXT NOT NULL UNIQUE, app_password TEXT NOT NULL, note TEXT DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+        return $pdo->query("SELECT id, apple_id, note, status FROM apple_accounts ORDER BY id")->fetchAll();
+    }
+
+    private static function getApiKeys(): array
+    {
+        $pdo = \TfSigner\Core\Database::connection();
+        $pdo->exec("CREATE TABLE IF NOT EXISTS api_keys (id INTEGER PRIMARY KEY AUTOINCREMENT, issuer_id TEXT NOT NULL, key_id TEXT NOT NULL, key_content TEXT NOT NULL, note TEXT DEFAULT '', created_at DATETIME DEFAULT CURRENT_TIMESTAMP)");
+        return $pdo->query("SELECT id, issuer_id, key_id, note FROM api_keys ORDER BY id")->fetchAll();
     }
 }

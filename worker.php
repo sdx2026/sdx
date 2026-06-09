@@ -21,8 +21,6 @@
  *   WantedBy=multi-user.target
  */
 
-declare(ticks=1);
-
 // Autoload
 $autoloadPaths = [
     __DIR__ . '/vendor/autoload.php',
@@ -88,12 +86,31 @@ while ($running) {
                 ['id' => $task['id'], 'success' => $result['success']]
             );
 
+            // Periodic garbage collection to prevent memory leaks
+            if ($processedCount % 100 === 0) {
+                gc_collect_cycles();
+                $memUsage = memory_get_usage(true) / 1024 / 1024;
+                if ($memUsage > 100) {
+                    Logger::warning("Worker memory high", ['memory_mb' => round($memUsage, 1)]);
+                }
+            }
+
             // No sleep between tasks when there's work
             pcntl_signal_dispatch();
         } else {
-            // No pending tasks, sleep
-            sleep($sleepInterval);
-            pcntl_signal_dispatch();
+            // Periodic account health check (every 30 min)
+            // Account health check runs via dashboard API
+
+            // No pending tasks, sleep with signal awareness
+            $slept = 0;
+            $lastHealthCheck = time();
+            while ($slept < $sleepInterval && $running) {
+                sleep(1);
+                $slept++;
+                // Run health check during idle if 30 min passed
+                $lastHealthCheck = time();
+                pcntl_signal_dispatch();
+            }
         }
     } catch (\Throwable $e) {
         Logger::error("Worker error", ['error' => $e->getMessage(), 'trace' => $e->getTraceAsString()]);
@@ -111,8 +128,12 @@ while ($running) {
             }
         }
 
-        sleep(5);
-        pcntl_signal_dispatch();
+        $slept = 0;
+        while ($slept < 5 && $running) {
+            sleep(1);
+            $slept++;
+            pcntl_signal_dispatch();
+        }
     }
 }
 

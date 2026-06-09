@@ -1,2 +1,6 @@
-config.php
-storage/
+/storage/
+/config/config.php
+/vendor/
+.DS_Store
+._*
+*.log

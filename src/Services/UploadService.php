@@ -22,7 +22,7 @@ class UploadService
 
         $altoolPath = $this->findAltool();
         if (!$altoolPath) {
-            throw new \RuntimeException("xcrun altool not found. Please install Xcode or Transporter.");
+            throw new \RuntimeException('[E4001] xcrun altool not found — macOS required for App Store upload. Use "🚀 GitHub Actions" task type instead.');
         }
 
         $reportProgress(10, 'Validating IPA...');
@@ -42,11 +42,11 @@ class UploadService
 
         $validateJson = json_decode($validateResult, true);
 
+        $validateJson = is_array($validateJson) ? $validateJson : [];
         if ($validateCode !== 0) {
             return [
                 'success' => false,
-                'stage' => 'validation',
-                'error' => $validateJson['product-errors'][0]['message'] ?? $validateResult,
+                'stage' => 'validation',            'error' => $uploadCode === 0 ? null : $uploadOutput,
                 'raw' => $validateResult,
             ];
         }
@@ -128,7 +128,9 @@ class UploadService
 
         return [
             'success' => $uploadCode === 0,
+
             'stage' => 'upload',
+            'error' => $uploadCode === 0 ? null : $uploadOutput,
             'code' => $uploadCode,
             'output' => $uploadOutput,
             'data' => json_decode($uploadOutput, true),

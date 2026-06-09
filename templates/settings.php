@@ -83,11 +83,23 @@ async function loadAppleAccounts() {
     const list = await resp.json();
     const el = document.getElementById('appleAccountList');
     if (!list.length) { el.innerHTML = '<div class="text-muted">暂无账号</div>'; return; }
-    el.innerHTML = '<table><thead><tr><th>ID</th><th>Apple ID</th><th>备注</th><th>创建时间</th><th>操作</th></tr></thead><tbody>' +
-        list.map(a => '<tr><td class="mono">#'+a.id+'</td><td>'+esc(a.apple_id)+'</td><td>'+esc(a.note||'-')+'</td><td class="text-muted">'+a.created_at+'</td><td><button onclick="delApple('+a.id+')" class="btn btn-danger btn-sm">删除</button></td></tr>').join('') + '</tbody></table>';
+    let html = '<table><thead><tr><th>ID</th><th>Apple ID</th><th>状态</th><th>备注</th><th>错误</th><th>操作</th></tr></thead><tbody>';
+    for (const a of list) {
+        const statusBadge = a.status === 'blocked' 
+            ? '<span class="badge badge-failed" title="上传失败已禁用">🚫 异常</span>' 
+            : '<span class="badge badge-completed">✅ 正常</span>';
+        const errorCell = a.last_error ? '<span class="text-muted" style="font-size:0.75rem;max-width:150px;display:inline-block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="'+esc(a.last_error)+'">'+esc(a.last_error.substring(0,30))+'</span>' : '<span class="text-muted">-</span>';
+        const actionBtn = a.status === 'blocked'
+            ? '<button onclick="retryApple('+a.id+')" class="btn btn-primary btn-sm">🔄 重试</button> <button onclick="delApple('+a.id+')" class="btn btn-danger btn-sm">删除</button>'
+            : '<button onclick="delApple('+a.id+')" class="btn btn-danger btn-sm">删除</button>';
+        html += '<tr><td class="mono">#'+a.id+'</td><td>'+esc(a.apple_id)+'</td><td>'+statusBadge+'</td><td>'+esc(a.note||'-')+'</td><td>'+errorCell+'</td><td>'+actionBtn+'</td></tr>';
+    }
+    html += '</tbody></table>';
+    el.innerHTML = html;
 }
 function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
-async function delApple(id) { if(!confirm('删除?')) return; await fetch('/api/apple-accounts/'+id,{method:'DELETE'}); loadAppleAccounts(); }
+async function delApple(id) { if(!confirm('确定删除该账号？关联任务将清空引用。')) return; await fetch('/api/apple-accounts/'+id,{method:'DELETE'}); loadAppleAccounts(); }
+async function retryApple(id) { await fetch('/api/apple-accounts/'+id+'/retry',{method:'POST'}); alert('已重置账号状态为正常'); loadAppleAccounts(); }
 document.getElementById('addAppleAccount').addEventListener('submit', async (e) => {
     e.preventDefault();
     const data = Object.fromEntries(new FormData(e.target));

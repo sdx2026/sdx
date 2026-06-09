@@ -41,6 +41,7 @@
             <th>名称</th>
             <th>Bundle ID</th>
             <th>Team ID</th>
+            <th>Team名称</th>
             <th>创建时间</th>
             <th>操作</th>
         </tr>
@@ -52,6 +53,7 @@
             <td><?= htmlspecialchars($app['name']) ?></td>
             <td class="mono"><?= htmlspecialchars($app['bundle_id']) ?></td>
             <td><?= htmlspecialchars($app['team_id'] ?: '-') ?></td>
+            <td><?= htmlspecialchars($app['team_name'] ?: '-') ?></td>
             <td class="text-muted"><?= $app['created_at'] ?></td>
             <td>
                 <button onclick="deleteApp(<?= $app['id'] ?>)" class="btn btn-danger btn-sm">删除</button>

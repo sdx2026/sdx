@@ -99,7 +99,9 @@ class Router
      */
     public static function isLoggedIn(): bool
     {
-        session_start();
+        if (session_status() === PHP_SESSION_NONE) {
+            session_start();
+        }
         return !empty($_SESSION['tfsigner_auth']);
     }
 

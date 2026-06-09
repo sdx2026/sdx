@@ -63,6 +63,32 @@
     </form>
 </div>
 
+<div class="card" style="border-color: var(--accent);">
+    <h2>🍎 Apple API 一键生成证书 <span class="text-muted" style="font-size:0.8rem;">(需先在设置页配置 API Key)</span></h2>
+    <p class="text-muted">自动调用 App Store Connect API 创建真实签名证书，无需 Mac 导出</p>
+    <form id="appleCertForm">
+        <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px;">
+            <div class="form-group">
+                <label>证书名称</label>
+                <input type="text" name="name" placeholder="例如: Auto Distribution Cert">
+            </div>
+            <div class="form-group">
+                <label>类型</label>
+                <select name="type">
+                    <option value="IOS_DISTRIBUTION">分发证书 (App Store)</option>
+                    <option value="IOS_DEVELOPMENT">开发证书</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>邮箱</label>
+                <input type="email" name="email" placeholder="developer@email.com">
+            </div>
+        </div>
+        <button type="submit" class="btn btn-primary" style="background:var(--green);">🍎 一键生成证书</button>
+        <span id="appleCertStatus" class="text-muted" style="margin-left:8px;"></span>
+    </form>
+</div>
+
 <h2>已有证书</h2>
 <div id="certList">加载中...</div>
 
@@ -86,6 +112,8 @@ async function loadCerts() {
                 <td class="${c.expires_at && c.expires_at < new Date().toISOString() ? 'text-muted' : ''}">${c.expires_at || '-'}</td>
                 <td>
                     <button onclick="deleteCert(${c.id})" class="btn btn-danger btn-sm">删除</button>
+                    ${c.cert_path ? '<a href="/download/' + c.cert_path.split('/').pop() + '" class="btn btn-outline btn-sm" style="margin-left:4px;" download>⬇ 证书</a>' : ''}
+                    ${c.key_path ? '<a href="/download/' + c.key_path.split('/').pop() + '" class="btn btn-outline btn-sm" style="margin-left:4px;" download>⬇ 密钥</a>' : ''}
                 </td>
             </tr>`).join('')}
         </tbody></table>`;
@@ -123,6 +151,22 @@ document.getElementById('importForm').addEventListener('submit', async (e) => {
     const result = await resp.json();
     if (result.success) { alert('证书导入成功！ID: ' + result.certificate.id); loadCerts(); e.target.reset(); }
     else alert('失败: ' + (result.error || '未知错误'));
+});
+
+// Apple API auto-generate
+document.getElementById('appleCertForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const btn = e.target.querySelector('button');
+    const st = document.getElementById('appleCertStatus');
+    btn.disabled = true; st.textContent = '⏳ 正在调用 Apple API...';
+    try {
+        const data = Object.fromEntries(new FormData(e.target));
+        const resp = await fetch('/api/certs/apple-generate', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+        const r = await resp.json();
+        if (r.success) { st.textContent = '✅ 证书已生成！'; st.style.color = 'var(--green)'; loadCerts(); e.target.reset(); }
+        else { st.textContent = '❌ ' + (r.error || '失败'); st.style.color = 'var(--red)'; }
+    } catch(err) { st.textContent = '❌ 网络错误'; st.style.color = 'var(--red)'; }
+    btn.disabled = false;
 });
 
 loadCerts();

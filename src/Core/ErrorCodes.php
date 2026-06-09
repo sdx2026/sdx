@@ -41,6 +41,8 @@ class ErrorCodes
     public const SYSTEM_DISK_FULL = 9001;
     public const SYSTEM_DB_ERROR = 9002;
     public const SYSTEM_WORKER_STOPPED = 9003;
+    public const GITHUB_TOKEN_MISSING = 9004;
+    public const GITHUB_TRIGGER_FAILED = 9005;
 
     private static array $messages = [
         // Cert
@@ -76,6 +78,8 @@ class ErrorCodes
         9001 => '服务器磁盘空间不足，请清理后重试',
         9002 => '数据库错误，请联系管理员',
         9003 => '后台 Worker 已停止，请重启 Worker',
+        9004 => 'GitHub Token 未配置，请在设置页添加',
+        9005 => 'GitHub Actions 触发失败，请检查 Token 和仓库配置',
     ];
 
     private static array $fixes = [
@@ -93,6 +97,8 @@ class ErrorCodes
         5002 => '去 appleid.apple.com 生成 App 专用密码',
         5004 => '构建号每次上架必须递增，去新建任务填入更大的构建号',
         9003 => 'SSH 登录执行: cd /www/wwwroot/tfsigner && nohup php worker.php &',
+        9004 => '去设置 → GitHub Token 粘贴你的 Personal Access Token',
+        9005 => '检查 GitHub Token 权限（需要 workflow 权限），确认仓库名和分支正确',
     ];
 
     public static function getMessage(int $code): string
@@ -129,6 +135,8 @@ class ErrorCodes
             "/disk.*(full|space)/i" => self::SYSTEM_DISK_FULL,
             "/permission denied/i" => self::SIGN_PERMISSION_DENIED,
             "/expired/i" => self::CERT_EXPIRED,
+            "/xcrun.*not found/i" => self::SIGN_TOOL_NOT_FOUND,
+            "/altool.*not found/i" => self::SIGN_TOOL_NOT_FOUND,
         ];
         foreach ($detections as $pattern => $code) {
             if (preg_match($pattern, $rawError)) {

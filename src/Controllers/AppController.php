@@ -19,27 +19,44 @@ class AppController
             return Router::json(['error' => 'Method not allowed'], 405);
         }
 
-        $name = $_POST['name'] ?? '';
-        $bundleId = $_POST['bundle_id'] ?? '';
-        $teamId = $_POST['team_id'] ?? '';
-        $teamName = $_POST['team_name'] ?? '';
+        $name = trim($_POST['name'] ?? '');
+        $bundleId = trim($_POST['bundle_id'] ?? '');
+        $teamId = trim($_POST['team_id'] ?? '');
+        $teamName = trim($_POST['team_name'] ?? '');
 
         if (!$name || !$bundleId) {
             return Router::json(['error' => 'Name and bundle ID required'], 400);
         }
 
         $pdo = Database::connection();
-        $stmt = $pdo->prepare("INSERT INTO apps (name, bundle_id, team_id, team_name) VALUES (?, ?, ?, ?)");
-        $stmt->execute([$name, $bundleId, $teamId, $teamName]);
+        try {
+            $stmt = $pdo->prepare("INSERT INTO apps (name, bundle_id, team_id, team_name) VALUES (?, ?, ?, ?)");
+            $stmt->execute([$name, $bundleId, $teamId, $teamName]);
+        } catch (\PDOException $e) {
+            if ($e->getCode() == 23000 || strpos($e->getMessage(), 'UNIQUE') !== false) {
+                return Router::json(['error' => 'Bundle ID 已存在，请勿重复添加'], 409);
+            }
+            return Router::json(['error' => '添加失败: ' . $e->getMessage()], 500);
+        }
 
         $id = $pdo->lastInsertId();
-        return Router::json(['success' => true, 'id' => $id]);
+        Router::logOp('app_create', $name . ' (' . $bundleId . ')');
+        Router::redirect('/apps');
+        return '';
     }
 
     public static function delete(int $id): string
     {
         $pdo = Database::connection();
+
+        // Clean up related provisioning profiles
+        $pdo->prepare("DELETE FROM provisioning_profiles WHERE app_id = ?")->execute([$id]);
+
+        // Nullify app references in tasks (keep task history)
+        $pdo->prepare("UPDATE tasks SET app_id = NULL WHERE app_id = ?")->execute([$id]);
+
         $pdo->prepare("DELETE FROM apps WHERE id = ?")->execute([$id]);
+        Router::logOp('app_delete', 'ID: ' . $id);
         return Router::json(['success' => true]);
     }
 

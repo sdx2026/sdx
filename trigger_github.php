@@ -1,12 +1,24 @@
 <?php
 /**
- * 触发 GitHub Actions 签名任务
- * 用法: php trigger_github.php <task_id>
+ * Trigger GitHub Actions signing workflow
+ * Usage: php trigger_github.php <task_id>
  */
 
-require_once __DIR__ . "/public/index.php";
+// Autoload
+$autoloadPaths = [__DIR__ . "/vendor/autoload.php", __DIR__ . "/../../vendor/autoload.php"];
+foreach ($autoloadPaths as $path) { if (file_exists($path)) { require $path; break; } }
+if (!class_exists(\TfSigner\Core\App::class)) {
+    spl_autoload_register(function ($class) {
+        $prefix = "TfSigner\\";
+        $baseDir = __DIR__ . "/src/";
+        $len = strlen($prefix);
+        if (strncmp($prefix, $class, $len) !== 0) return;
+        $relativeClass = substr($class, $len);
+        $file = $baseDir . str_replace("\\", "/", $relativeClass) . ".php";
+        if (file_exists($file)) require $file;
+    });
+}
 
-// Re-bootstrap for CLI
 \TfSigner\Core\App::boot();
 
 $taskId = (int)($argv[1] ?? 0);
@@ -35,48 +47,39 @@ if (!$cert || !$profile) {
     die("Certificate or profile not found\n");
 }
 
-$baseUrl = "https://bsj.appssign.cc";
-
-$payload = [
-    "ref" => "main",
-    "inputs" => [
-        "task_id" => (string)$taskId,
-        "ipa_url" => $baseUrl . "/download/" . basename($task["input_ipa"]),
-        "cert_url" => $baseUrl . "/download/" . basename($cert["cert_path"]),
-        "key_url" => $baseUrl . "/download/" . basename($cert["key_path"]),
-        "profile_url" => $baseUrl . "/download/" . basename($profile["profile_path"]),
-        "bundle_id" => $task["bundle_id"] ?? "",
-        "apple_id" => $task["apple_id"] ?? "",
-        "apple_password" => $task["app_password"] ?? "",
-        "key_password" => $cert["password"] ?? "",
-    ],
-];
-
-$token = getenv("GITHUB_TOKEN") ?: "";
-if (!$token) {
-    die("Error: GITHUB_TOKEN environment variable not set\n");
+// Resolve Apple credentials: when apple_account_id is set, fetch from DB (same as TaskService)
+$appleId = $task["apple_id"] ?? "";
+$appPassword = $task["app_password"] ?? "";
+if (!empty($task["apple_account_id"])) {
+    $acct = $pdo->prepare("SELECT apple_id, app_password, status FROM apple_accounts WHERE id = ?");
+    $acct->execute([(int)$task["apple_account_id"]]);
+    $acctData = $acct->fetch();
+    if ($acctData) {
+        $appleId = $acctData["apple_id"];
+        $appPassword = $acctData["app_password"];
+    }
 }
 
-$ch = curl_init("https://api.github.com/repos/sdx2026/sdx/actions/workflows/sign.yml/dispatches");
-curl_setopt_array($ch, [
-    CURLOPT_RETURNTRANSFER => true,
-    CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode($payload),
-    CURLOPT_HTTPHEADER => [
-        "Authorization: Bearer {$token}",
-        "Accept: application/vnd.github+json",
-        "X-GitHub-Api-Version: 2022-11-28",
-        "Content-Type: application/json",
-        "User-Agent: TF-Signer/1.0",
-    ],
+$baseUrl = \TfSigner\Core\Config::get("app.url", "https://bsj.appssign.cc");
+
+// Delegate to GitHubService - single source of truth
+$gh = new \TfSigner\Services\GitHubService();
+$payload = $gh->buildPayload([
+    "task_id"          => (string)$taskId,
+    "ipa_url"          => $baseUrl . "/download/" . basename($task["input_ipa"]),
+    "cert_url"         => $baseUrl . "/download/" . basename($cert["cert_path"]),
+    "key_url"          => $baseUrl . "/download/" . basename($cert["key_path"]),
+    "profile_url"      => $baseUrl . "/download/" . basename($profile["profile_path"]),
+    "bundle_id"        => $task["bundle_id"] ?? "",
+    "apple_id"         => $appleId,
+    "app_password"     => $appPassword,
+    "override_version" => $task["override_version"] ?? "",
+    "override_build"   => $task["override_build"] ?? "",
 ]);
 
-$response = curl_exec($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-curl_close($ch);
-
-if ($httpCode === 204) {
-    echo "✅ GitHub Actions triggered for task #{$taskId}\n";
-} else {
-    echo "❌ Failed (HTTP {$httpCode}): {$response}\n";
+try {
+    $gh->dispatch($payload);
+    echo "OK: GitHub Actions triggered for task #{$taskId}\n";
+} catch (\Throwable $e) {
+    echo "ERROR: " . $e->getMessage() . "\n";
 }
