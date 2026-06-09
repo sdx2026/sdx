@@ -157,7 +157,7 @@ $router->get('/ota/install/{task_id}', function ($taskId) {
     }
     
     $baseUrl = \TfSigner\Core\Config::get('app.url', 'https://bsj.appssign.cc');
-    $ipaUrl = $baseUrl . "/download/" . basename($task['output_ipa']);
+    $ipaUrl = $baseUrl . "/download/" . basename($task["output_ipa"]) . "?task_id=" . $taskId;
     $bundleId = $task['bundle_id'] ?? 'com.example.app';
     $appName = $task['app_name'] ?? 'App';
     $version = $task['override_version'] ?? '1.0';
@@ -178,10 +178,10 @@ $router->get('/ota/install/{task_id}', function ($taskId) {
             </array>
             <key>metadata</key>
             <dict>
-                <key>bundle-identifier</key><string>' . $bundleId . '</string>
-                <key>bundle-version</key><string>' . $version . '</string>
+                <key>bundle-identifier</key><string>' . htmlspecialchars($bundleId, ENT_XML1) . '</string>
+                <key>bundle-version</key><string>' . htmlspecialchars($version, ENT_XML1) . '</string>
                 <key>kind</key><string>software</string>
-                <key>title</key><string>' . $appName . '</string>
+                <key>title</key><string>' . htmlspecialchars($appName, ENT_XML1) . '</string>
             </dict>
         </dict>
     </array>
@@ -248,7 +248,7 @@ $router->get('/download/{file}', function($file) {
     if (!$isAuthorized && !empty($_GET['task_id'])) {
         $tid = (int)$_GET['task_id'];
         $pdo = \TfSigner\Core\Database::connection();
-        $taskRow = $pdo->prepare("SELECT id FROM tasks WHERE id = ? AND status IN ('pending','processing') LIMIT 1");
+        $taskRow = $pdo->prepare("SELECT id FROM tasks WHERE id = ? AND status IN ('pending','processing','completed') LIMIT 1");
         $taskRow->execute([$tid]);
         if ($taskRow->fetch()) {
             $isAuthorized = true;
