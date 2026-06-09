@@ -164,6 +164,7 @@ if (preg_match('/<key>CFBundleVersion<\/key>\s*<string>(.+?)<\/string>/s', $plis
         $pdo = Database::connection();
         $s = [];
         foreach ($pdo->query("SELECT * FROM settings") as $row) $s[$row['key']] = $row['value'];
+unset($s["admin_password"]);
         return Router::json(array_merge([
             'apple_id' => '', 'app_password' => '', 'github_token' => Config::get('github.token', ''),
             'webhook_url' => '', 'webhook_secret' => '',

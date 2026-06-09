@@ -370,6 +370,7 @@ class TaskService
         if (!$cert || !$profile) {
             throw new \RuntimeException('[E1001] Certificate or profile not found for GitHub sign.');
         }
+// Validate cert/profile are active        if (empty($cert["is_active"])) {            throw new \RuntimeException("[E1003] Certificate is not active: " . ($cert["name"] ?? "unknown"));        }        if (empty($profile["is_active"])) {            throw new \RuntimeException("[E2003] Provisioning profile is not active: " . ($profile["name"] ?? "unknown"));        }        // Validate bundle_id: if task has app_id, profile bundle must match        if (!empty($task["app_id"])) {            $app = $pdo->prepare("SELECT bundle_id, name FROM apps WHERE id = ?");            $app->execute([(int)$task["app_id"]]);            $appData = $app->fetch();            if ($appData && !empty($appData["bundle_id"]) && $appData["bundle_id"] !== ($profile["bundle_id"] ?? "")) {                throw new \RuntimeException("[E2004] Profile bundle ID \"" . ($profile["bundle_id"] ?? "?") . "\" does not match app \"" . $appData["name"] . "\" bundle ID \"" . $appData["bundle_id"] . "\"");            }        }
 
         // Resolve Apple credentials (always use DB when saved account selected)
         $appleId = $task['apple_id'] ?? '';

@@ -238,6 +238,31 @@ class SigningService
         ];
     }
 
+    /**
+     * Extract the real codesign identity from a PEM certificate
+     * Uses openssl to get the SHA-256 fingerprint (works as codesign identity on macOS)
+     */
+    private function resolveSigningIdentity(array $certData): string
+    {
+        $certPath = $certData['cert_path'] ?? '';
+        if (!$certPath || !file_exists($certPath)) {
+            return escapeshellarg('-'); // fallback to ad-hoc (should never happen)
+        }
+        // Try to extract Subject CN for codesign identity
+        $subject = exec('openssl x509 -subject -noout -in ' . escapeshellarg($certPath) . ' 2>/dev/null');
+        if ($subject && preg_match('/CN\s*=\s*([^\/
+]+)/', $subject, $m)) {
+            $cn = trim($m[1]);
+            return escapeshellarg($cn);
+        }
+        // Fallback: use SHA-1 fingerprint (also valid as codesign identity)
+        $fingerprint = exec('openssl x509 -fingerprint -noout -in ' . escapeshellarg($certPath) . ' 2>/dev/null');
+        if ($fingerprint && preg_match('/=([0-9A-F:]+)/i', $fingerprint, $m)) {
+            return escapeshellarg(str_replace(':', '', $m[1]));
+        }
+        return escapeshellarg('-');
+    }
+
     private function removeOldSignature(string $appPath): void
     {
         foreach (['_CodeSignature', 'CodeResources', 'embedded.mobileprovision'] as $f) {
@@ -260,7 +285,7 @@ class SigningService
 
     private function signFrameworks(string $appPath, array $certData, string $entitlementsFile): void
     {
-        $certId = escapeshellarg($certData['name'] ?? $certData['cert_path'] ?? '-');
+        $certId = $this->resolveSigningIdentity($certData);
         foreach (['Frameworks', 'PlugIns'] as $sub) {
             $p = $appPath . '/' . $sub;
             if (!is_dir($p)) continue;
@@ -273,7 +298,7 @@ class SigningService
 
     private function signApp(string $appPath, array $certData, string $entitlementsFile): void
     {
-        $certId = escapeshellarg($certData['name'] ?? $certData['cert_path'] ?? '-');
+        $certId = $this->resolveSigningIdentity($certData);
         exec('codesign --force --sign ' . $certId . ' --entitlements ' . escapeshellarg($entitlementsFile) . ' --timestamp=none ' . escapeshellarg($appPath) . ' 2>/dev/null');
     }
 
