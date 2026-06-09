@@ -27,6 +27,14 @@ on:
       apple_password:
         description: "App 专用密码"
         required: true
+      override_version:
+        description: "覆盖版本号 (CFBundleShortVersionString)"
+        required: false
+        default: ""
+      override_build:
+        description: "覆盖构建号 (CFBundleVersion)"
+        required: false
+        default: ""
 
 jobs:
   sign_and_upload:
@@ -57,21 +65,41 @@ jobs:
           security unlock-keychain -p temp123 build.keychain
           security import cert.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k temp123 build.keychain
+          # 查出分发证书的 SHA-1 身份
+          security find-identity -v -p codesigning build.keychain | grep "Apple Distribution" | head -1 | awk '{print $2}' > SIGN_IDENTITY
+          echo "签名身份: $(cat SIGN_IDENTITY)"
 
       - name: ✍️ 重签名
         run: |
+          SIGN_ID=$(cat SIGN_IDENTITY)
+          if [ -z "$SIGN_ID" ]; then
+            echo "❌ 未找到 Apple Distribution 签名身份"
+            security find-identity -v -p codesigning build.keychain
+            exit 1
+          fi
           rm -rf Payload
           unzip -q app.ipa
           APP=$(ls -d Payload/*.app | head -1)
           cp profile.mobileprovision "$APP/embedded.mobileprovision"
           security cms -D -i profile.mobileprovision > profile.plist
           /usr/libexec/PlistBuddy -x -c "Print Entitlements" profile.plist > entitlements.plist
+          # 修改 Bundle ID
           /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${{ inputs.bundle_id }}" "$APP/Info.plist" 2>/dev/null || true
+          # 覆盖版本号
+          if [ -n "${{ inputs.override_version }}" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.override_version }}" "$APP/Info.plist" 2>/dev/null || true
+          fi
+          # 覆盖构建号
+          if [ -n "${{ inputs.override_build }}" ]; then
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.override_build }}" "$APP/Info.plist" 2>/dev/null || true
+          fi
+          # 签名 Frameworks 和 PlugIns
           for fw in "$APP/Frameworks/"*.framework "$APP/PlugIns/"*.appex; do
             [ -d "$fw" ] || continue
-            /usr/bin/codesign --force --sign - --timestamp=none "$fw" 2>/dev/null || true
+            /usr/bin/codesign --force --sign "$SIGN_ID" --timestamp=none "$fw" 2>/dev/null || true
           done
-          /usr/bin/codesign --force --sign - --entitlements entitlements.plist --timestamp=none "$APP"
+          # 用导入的分发证书签名主 App
+          /usr/bin/codesign --force --sign "$SIGN_ID" --entitlements entitlements.plist --timestamp=none "$APP"
           rm -f signed.ipa
           zip -qr signed.ipa Payload
           echo "签名完成"
@@ -81,7 +109,13 @@ jobs:
           xcrun altool --upload-app -f signed.ipa -t ios \
             -u "${{ inputs.apple_id }}" \
             -p "${{ inputs.apple_password }}" \
-            --output-format json
+            --output-format json > upload_result.json 2>&1
+          cat upload_result.json
+
+      - name: 🧹 清理钥匙串
+        if: always()
+        run: |
+          security delete-keychain build.keychain 2>/dev/null || true
 
       - name: 📢 通知服务器 - 成功
         if: success()
