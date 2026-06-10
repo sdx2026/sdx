@@ -280,7 +280,7 @@ unset($s["admin_password"]);
             return ['success' => false, 'message' => 'Task not eligible for auto-submit'];
         }
         
-        $apiKeyId = (int)($input["api_key_id"] ?? 0);
+        $apiKeyId = (int)($task["api_key_id"] ?? 0);
         if ($apiKeyId > 0) {
             $akStmt = $pdo->prepare("SELECT * FROM api_keys WHERE id = ?");
             $akStmt->execute([$apiKeyId]);
