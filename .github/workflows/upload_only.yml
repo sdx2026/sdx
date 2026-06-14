@@ -15,19 +15,18 @@ jobs:
         run: curl -sLo signed.ipa "${{ inputs.signed_ipa_url }}" && ls -lh signed.ipa
       - name: Upload to App Store
         run: |
-          /Applications/Xcode-beta.app/Contents/Developer/usr/bin/altool --upload-app --file signed.ipa -t ios -u "${{ inputs.apple_id }}"             -p "${{ inputs.apple_password }}"             --output-format json > upload_result.json 2>&1
+          xcrun altool --upload-package signed.ipa -u "${{ inputs.apple_id }}" -p "${{ inputs.apple_password }}" --output-format json > upload_result.json 2>&1
           cat upload_result.json
       - name: Callback
         if: always()
         run: |
           cat > callback.py << 'PYEOF'
-          import json, subprocess, sys, os, re
+          import json, subprocess, sys, os
           task_id = sys.argv[1]
           url = f'https://bsj.appssign.cc/api/tasks/{task_id}/callback'
           msg = 'Upload failed'
           if os.path.exists('upload_result.json'):
               raw = open('upload_result.json').read()
-              # Try to find JSON portion (after first '{')
               idx = raw.find('{')
               if idx >= 0:
                   try:
@@ -40,13 +39,11 @@ jobs:
                       errs = d.get('product-errors', d.get('errors', []))
                       msg = errs[0].get('message', str(errs[0])) if errs else d.get('statusMessage', str(d))
                   except Exception as e:
-                      # JSON parse failed, extract error from text
                       for line in raw.split('\n'):
                           if 'ERROR:' in line:
                               msg = line.split('ERROR:', 1)[-1].strip()[:500]
                               break
               else:
-                  # No JSON found, extract error from plain text
                   for line in raw.split('\n'):
                       if 'ERROR:' in line or 'error:' in line.lower():
                           msg = line.strip()[:500]
