@@ -129,4 +129,4 @@ jobs:
         run: |
           curl -s -X POST "https://bsj.appssign.cc/api/tasks/${{ inputs.task_id }}/callback" \
             -H "Content-Type: application/json" \
-            -d '{"status":"failed","error":"GitHub Actions 签名或上传失败"}'
+            -d '{"status":"failed","error":"GitHub Actions failed - check Actions logs on github.com"}'
