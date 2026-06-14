@@ -442,6 +442,7 @@ class TaskService
             'bundle_id'      => $profileRow['bundle_id'] ?? '',
         ]);
 
+        Logger::info('Upload dispatch payload', ['payload' => $payload]);
         $result = $gh->dispatch($payload);
         $this->updateStatus($taskId, 'processing', result: 'GitHub Actions upload triggered', progress: 60);
         return $result;
