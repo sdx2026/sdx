@@ -15,7 +15,7 @@ jobs:
         run: curl -sLo signed.ipa "${{ inputs.signed_ipa_url }}" && ls -lh signed.ipa
       - name: Upload to App Store
         run: |
-          xcrun altool --upload-app --type ios --upload-bundle signed.ipa -u "${{ inputs.apple_id }}" -p "${{ inputs.apple_password }}" --output-format json > upload_result.json 2>&1
+          xcrun altool --upload-app --file signed.ipa --type ios -u "${{ inputs.apple_id }}" -p "${{ inputs.apple_password }}" --output-format json > upload_result.json 2>&1
           cat upload_result.json
       - name: Callback
         if: always()
