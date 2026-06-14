@@ -418,6 +418,7 @@ class SigningService
             if (!preg_match('/<key>([^<]*)<\/key>/s', $content, $km, PREG_OFFSET_CAPTURE, $pos)) break;
             $key = trim($km[1][0]);
             $vpos = $km[0][1] + strlen($km[0][0]);
+            $endPos = 0;
             $value = self::parsePlistValue($content, $vpos, $endPos);
             if ($endPos > $vpos) {
                 $result[$key] = $value;
@@ -429,7 +430,7 @@ class SigningService
         return $result;
     }
 
-    private static function parsePlistValue(string $content, int $start, ?int &$end): mixed
+    private static function parsePlistValue(string $content, int $start, int &$end): mixed
     {
         $end = $start;
         // Skip whitespace
@@ -451,6 +452,7 @@ class SigningService
             $result = [];
             $apos = 0;
             while ($apos < strlen($arrContent)) {
+                    $aend = 0;
                 $val = self::parsePlistValue($arrContent, $apos, $aend);
                 if ($aend > $apos) {
                     $result[] = $val;
@@ -493,7 +495,7 @@ class SigningService
         $depth = 1;
         $pos = $start;
         $len = strlen($content);
-        while ($pos < $len && $depth > 0) {
+        while ($pos < $len) {
             $openPos = strpos($content, '<' . $tag . '>', $pos);
             $closePos = strpos($content, '</' . $tag . '>', $pos);
             if ($closePos === false) return false;

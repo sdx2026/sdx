@@ -128,6 +128,41 @@ class ApiController
         return Router::json(['success' => true, 'id' => $pdo->lastInsertId(), 'bundle_id' => $bid]);
     }
 
+    /**
+     * Parse plist data, supporting both XML and binary (bplist) formats.
+     * Falls back to Python plistlib for binary plists.
+     */
+    public static function parsePlistData(string $plistBytes): array
+    {
+        // Try XML plist first
+        $data = [];
+        if (preg_match('/<key>CFBundleIdentifier<\/key>\s*<string>(.+?)<\/string>/s', $plistBytes, $m)) $data['CFBundleIdentifier'] = $m[1];
+        if (preg_match('/<key>CFBundleShortVersionString<\/key>\s*<string>(.+?)<\/string>/s', $plistBytes, $m)) $data['CFBundleShortVersionString'] = $m[1];
+        if (preg_match('/<key>CFBundleVersion<\/key>\s*<string>(.+?)<\/string>/s', $plistBytes, $m)) $data['CFBundleVersion'] = $m[1];
+        if (preg_match('/<key>CFBundleDisplayName<\/key>\s*<string>(.+?)<\/string>/s', $plistBytes, $m)) $data['CFBundleDisplayName'] = $m[1];
+        if (preg_match('/<key>CFBundleName<\/key>\s*<string>(.+?)<\/string>/s', $plistBytes, $m)) $data['CFBundleName'] = $m[1];
+        
+        // If XML parsing succeeded, return immediately
+        if (!empty($data)) return $data;
+        
+        // Binary plist detection: starts with bplist magic bytes
+        if (substr($plistBytes, 0, 6) !== 'bplist') return $data;
+        
+        // Use Python plistlib to parse binary plist
+        $tmpFile = tempnam(sys_get_temp_dir(), 'plist_');
+        file_put_contents($tmpFile, $plistBytes);
+        try {
+            $script = 'import plistlib,json,sys; d=plistlib.load(open(sys.argv[1],"rb")); print(json.dumps({k:d.get(k,"") for k in ["CFBundleIdentifier","CFBundleShortVersionString","CFBundleVersion","CFBundleDisplayName","CFBundleName"]}))';
+            $json = shell_exec('python3 -c ' . escapeshellarg($script) . ' ' . escapeshellarg($tmpFile) . ' 2>/dev/null');
+            if ($json) {
+                $parsed = json_decode($json, true);
+                if (is_array($parsed)) $data = $parsed;
+            }
+        } catch (\Throwable $e) {}
+        @unlink($tmpFile);
+        return $data;
+    }
+
     public static function parseIpa(): string
     {
         if (empty($_FILES['ipa_file'])) return Router::json(['error' => 'IPA file required'], 400);
@@ -143,14 +178,7 @@ class ApiController
             }
         }
         $zip->close();
-        $data = [];
-        if ($plist) {
-            if (preg_match('/<key>CFBundleIdentifier<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleIdentifier'] = $m[1];
-            if (preg_match('/<key>CFBundleShortVersionString<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleShortVersionString'] = $m[1];
-if (preg_match('/<key>CFBundleVersion<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleVersion'] = $m[1];
-            if (preg_match('/<key>CFBundleDisplayName<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleDisplayName'] = $m[1];
-            if (preg_match('/<key>CFBundleName<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) $data['CFBundleName'] = $m[1];
-        }
+        $data = $plist ? self::parsePlistData($plist) : [];
         return Router::json([
             'success' => true, 'file_size' => round($size / 1024 / 1024, 2) . ' MB',
             'name' => $data['CFBundleDisplayName'] ?? $data['CFBundleName'] ?? 'Unknown',
@@ -183,6 +211,9 @@ unset($s["admin_password"]);
         if (!empty($input['new_password'])) {
             $hash = password_hash($input['new_password'], PASSWORD_BCRYPT);
             $pdo->prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('admin_password', ?, datetime('now'))")
+                ->execute([$hash]);
+            // Also sync to users table for admin accounts
+            $pdo->prepare("UPDATE users SET password_hash = ? WHERE role = 'admin'")
                 ->execute([$hash]);
             unset($input['new_password'], $input['confirm_password']);
             Router::logOp('password_change', 'Password updated');
@@ -220,12 +251,12 @@ unset($s["admin_password"]);
         $workerRunning = !empty(trim(shell_exec("pgrep -f '[w]orker.php' 2>/dev/null") ?: ""));
         $alerts = [];
         foreach ($pdo->query("SELECT name, type, expires_at FROM certificates WHERE is_active = 1 AND expires_at IS NOT NULL AND expires_at != ''") as $c) {
-            if (!$c['expires_at'] || $c['expires_at'] === '') continue;
+            if (!$c['expires_at']) continue;
             $days = (int)((strtotime($c['expires_at']) - time()) / 86400);
             if ($days < 30) $alerts[] = ['name' => $c['name'], 'type' => '证书', 'days' => $days, 'urgent' => $days < 7];
         }
         foreach ($pdo->query("SELECT pp.name, pp.expires_at, a.name as app_name FROM provisioning_profiles pp LEFT JOIN apps a ON pp.app_id = a.id WHERE pp.is_active = 1 AND pp.expires_at IS NOT NULL AND pp.expires_at != ''") as $p) {
-            if (!$p['expires_at'] || $p['expires_at'] === '') continue;
+            if (!$p['expires_at']) continue;
             $days = (int)((strtotime($p['expires_at']) - time()) / 86400);
             if ($days < 30) $alerts[] = ['name' => ($p['app_name'] ?: '') . ' ' . $p['name'], 'type' => '描述文件', 'days' => $days, 'urgent' => $days < 7];
         }
@@ -389,6 +420,21 @@ unset($s["admin_password"]);
         ]);
     }
 
+
+    public static function uploadIpa(): string
+    {
+        if (empty($_FILES["ipa_file"])) return Router::json(["error" => "IPA file required"], 400);
+        $file = $_FILES["ipa_file"];
+        if (pathinfo($file["name"], PATHINFO_EXTENSION) !== "ipa") return Router::json(["error" => "Only .ipa files allowed"], 400);
+        $destName = "input_" . time() . "_" . rand(1000,9999) . "_" . preg_replace("/[^a-zA-Z0-9._-]/", "_", $file["name"]);
+        $ipaDir = Config::get("storage.ipas");
+        $destPath = $ipaDir . "/" . $destName;
+        if (!move_uploaded_file($file["tmp_name"], $destPath)) {
+            return Router::json(["error" => "Failed to save file"], 500);
+        }
+        Router::logOp("ipa_upload", $destName . " (" . round(filesize($destPath)/1048576,1) . "MB)");
+        return Router::json(["success" => true, "filename" => $destName, "size" => filesize($destPath)]);
+    }
     public static function deleteIpa(): string
     {
         $input = json_decode(file_get_contents('php://input'), true);
@@ -523,6 +569,60 @@ unset($s["admin_password"]);
         return Router::json(['success' => true]);
     }
 
+
+    public static function updateUser(int $id): string
+    {
+        $input = json_decode(file_get_contents("php://input"), true);
+        if (!$input) return Router::json(["error" => "Invalid JSON"], 400);
+        $pdo = Database::connection();
+        $stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
+        $stmt->execute([$id]);
+        $user = $stmt->fetch();
+        if (!$user) return Router::json(["error" => "User not found"], 404);
+
+        $changes = [];
+        $params = [];
+
+        if (isset($input["username"])) {
+            $changes[] = "username = ?";
+            $params[] = $input["username"];
+        }
+        if (!empty($input["password"])) {
+            $changes[] = "password_hash = ?";
+            $params[] = password_hash($input["password"], PASSWORD_BCRYPT);
+        }
+        if (isset($input["role"])) {
+            if ($user["role"] === "admin" && $input["role"] !== "admin") {
+                $adminCount = (int) $pdo->query("SELECT COUNT(*) FROM users WHERE role='admin'")->fetchColumn();
+                if ($adminCount <= 1) {
+                    return Router::json(["error" => "Cannot change role of last admin"], 400);
+                }
+            }
+            $changes[] = "role = ?";
+            $params[] = $input["role"];
+        }
+        if (isset($input["permissions"])) {
+            $changes[] = "permissions = ?";
+            $params[] = json_encode($input["permissions"], JSON_UNESCAPED_UNICODE);
+        }
+
+        if (empty($changes)) {
+            return Router::json(["error" => "No fields to update"], 400);
+        }
+
+        $params[] = $id;
+        $sql = "UPDATE users SET " . implode(", ", $changes) . " WHERE id = ?";
+        $pdo->prepare($sql)->execute($params);
+
+        if ($user["role"] === "admin" && !empty($input["password"])) {
+            $pdo->prepare("INSERT OR REPLACE INTO settings (key, value, updated_at) VALUES ('admin_password', ?, datetime('now'))")
+                ->execute([password_hash($input["password"], PASSWORD_BCRYPT)]);
+        }
+
+        Router::logOp("user_update", "ID: " . $id);
+        return Router::json(["success" => true]);
+    }
+
     // === Apple API: auto-generate certificate ===
     public static function appleGenerateCert(): string
     {
@@ -598,13 +698,30 @@ unset($s["admin_password"]);
             $expiresAt = date('Y-m-d H:i:s', $certInfo['validTo_time_t'] ?? time());
             
             $appleCertResourceId = $result['data']['id'] ?? '';
-            $pdo->prepare("INSERT INTO certificates (name, type, cert_path, key_path, password, serial, team_id, expires_at, is_active, apple_cert_id) VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, ?)")
-                ->execute([$name, $type === 'IOS_DISTRIBUTION' ? 'distribution' : 'development', $certPath, $keyPathLocal, $serial, $issuerId, $expiresAt, $appleCertResourceId]);
+            $acct = $pdo->query("SELECT note FROM apple_accounts WHERE status = 'active' LIMIT 1")->fetch();
+            $accountTeamId = $acct['note'] ?? '';
+            $pdo->prepare("INSERT INTO certificates (name, type, cert_path, key_path, password, serial, expires_at, team_id, is_active, apple_cert_id) VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, ?)")
+                ->execute([$name, $type === 'IOS_DISTRIBUTION' ? 'distribution' : 'development', $certPath, $keyPathLocal, $serial, $expiresAt, $accountTeamId, $appleCertResourceId]);
             
             Router::logOp('cert_apple_gen', $name);
             return Router::json(['success' => true, 'id' => $pdo->lastInsertId(), 'name' => $name, 'expires_at' => $expiresAt]);
         } catch (\Throwable $e) {
-            return Router::json(['error' => $e->getMessage()], 500);
+            // 409 = certificate already exists — reuse the existing one
+            if (strpos($e->getMessage(), "409") !== false || strpos($e->getMessage(), "already have a current") !== false) {
+                $existingCerts = $api->listCertificates($type);
+                $appleCert = $existingCerts["data"][0] ?? null;
+                if ($appleCert) {
+                    $localCert = $pdo->prepare("SELECT id, name, cert_path, key_path FROM certificates WHERE apple_cert_id = ? AND is_active = 1");
+                    $localCert->execute([$appleCert["id"]]);
+                    $local = $localCert->fetch();
+                    if ($local) {
+                        Router::logOp("cert_apple_reuse", $local["name"]);
+                        return Router::json(["success" => true, "id" => $local["id"], "name" => $local["name"], "reused" => true]);
+                    }
+                    return Router::json(["error" => "Apple 账号已存在分发证书，但本地未同步。请前往 Apple Developer 下载后手动导入，或删除本地证书后重试。"], 409);
+                }
+            }
+            return Router::json(["error" => $e->getMessage()], 500);
         } finally {
             @unlink($keyPath);
         }

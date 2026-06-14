@@ -60,10 +60,10 @@ class CertificateService
         // Store in DB
         $pdo = Database::connection();
         $stmt = $pdo->prepare("
-            INSERT INTO certificates (name, type, cert_path, key_path, password, serial, team_id, expires_at)
+            INSERT INTO certificates (name, type, cert_path, key_path, password, serial, expires_at, team_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$name, $type, $certPath, $keyPath, $password, $serial, $teamId, $expiresAt]);
+        $stmt->execute([$name, $type, $certPath, $keyPath, $password, $serial, $expiresAt, $teamId]);
 
         $certId = $pdo->lastInsertId();
 
@@ -145,10 +145,10 @@ class CertificateService
 
         $pdo = Database::connection();
         $stmt = $pdo->prepare("
-            INSERT INTO certificates (name, type, cert_path, key_path, password, serial, team_id, expires_at)
+            INSERT INTO certificates (name, type, cert_path, key_path, password, serial, expires_at, team_id)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ");
-        $stmt->execute([$name, $type, $certPath, $keyPath, $password, $serial, $teamId, $expiresAt]);
+        $stmt->execute([$name, $type, $certPath, $keyPath, $password, $serial, $expiresAt, $teamId]);
 
         $certId = $pdo->lastInsertId();
         Logger::info("Certificate imported", ['id' => $certId, 'name' => $name]);

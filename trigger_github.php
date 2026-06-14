@@ -1,10 +1,10 @@
 <?php
 /**
- * Trigger GitHub Actions signing workflow
+ * Trigger GitHub Actions upload workflow (local signing already done)
  * Usage: php trigger_github.php <task_id>
+ * Note: Task must have been signed locally first (output_ipa must exist)
  */
 
-// Autoload
 $autoloadPaths = [__DIR__ . "/vendor/autoload.php", __DIR__ . "/../../vendor/autoload.php"];
 foreach ($autoloadPaths as $path) { if (file_exists($path)) { require $path; break; } }
 if (!class_exists(\TfSigner\Core\App::class)) {
@@ -27,27 +27,19 @@ if ($taskId <= 0) {
 }
 
 $pdo = \TfSigner\Core\Database::connection();
-$task = $pdo->prepare("SELECT t.*, a.bundle_id FROM tasks t LEFT JOIN apps a ON t.app_id = a.id WHERE t.id = ?");
+$task = $pdo->prepare("SELECT * FROM tasks WHERE id = ?");
 $task->execute([$taskId]);
 $task = $task->fetch();
 
-if (!$task) {
-    die("Task not found: {$taskId}\n");
+if (!$task) die("Task not found: {$taskId}\n");
+
+// Use signed IPA if available, otherwise input IPA
+$ipaPath = $task["output_ipa"] ?? $task["input_ipa"] ?? '';
+if (empty($ipaPath) || !file_exists($ipaPath)) {
+    die("IPA file not found\n");
 }
 
-$cert = $pdo->prepare("SELECT * FROM certificates WHERE id = ?");
-$cert->execute([$task["cert_id"]]);
-$cert = $cert->fetch();
-
-$profile = $pdo->prepare("SELECT * FROM provisioning_profiles WHERE id = ?");
-$profile->execute([$task["profile_id"]]);
-$profile = $profile->fetch();
-
-if (!$cert || !$profile) {
-    die("Certificate or profile not found\n");
-}
-
-// Resolve Apple credentials: when apple_account_id is set, fetch from DB (same as TaskService)
+// Resolve Apple credentials
 $appleId = $task["apple_id"] ?? "";
 $appPassword = $task["app_password"] ?? "";
 if (!empty($task["apple_account_id"])) {
@@ -55,6 +47,9 @@ if (!empty($task["apple_account_id"])) {
     $acct->execute([(int)$task["apple_account_id"]]);
     $acctData = $acct->fetch();
     if ($acctData) {
+        if (($acctData["status"] ?? "active") === "blocked") {
+            die("Apple account is blocked\n");
+        }
         $appleId = $acctData["apple_id"];
         $appPassword = $acctData["app_password"];
     }
@@ -62,24 +57,17 @@ if (!empty($task["apple_account_id"])) {
 
 $baseUrl = \TfSigner\Core\Config::get("app.url", "https://bsj.appssign.cc");
 
-// Delegate to GitHubService - single source of truth
-$gh = new \TfSigner\Services\GitHubService();
-$payload = $gh->buildPayload([
-    "task_id"          => (string)$taskId,
-    "ipa_url"          => $baseUrl . "/download/" . basename($task["input_ipa"]),
-    "cert_url"         => $baseUrl . "/download/" . basename($cert["cert_path"]),
-    "key_url"          => $baseUrl . "/download/" . basename($cert["key_path"]),
-    "profile_url"      => $baseUrl . "/download/" . basename($profile["profile_path"]),
-    "bundle_id"        => $task["bundle_id"] ?? "",
-    "apple_id"         => $appleId,
-    "app_password"     => $appPassword,
-    "override_version" => $task["override_version"] ?? "",
-    "override_build"   => $task["override_build"] ?? "",
+$gh = new \TfSigner\Services\GitHubService('sdx2026/sdx', 'upload_only.yml');
+$payload = $gh->buildUploadOnlyPayload([
+    "task_id"        => (string)$taskId,
+    "signed_ipa_url" => $baseUrl . "/download/" . basename($ipaPath) . "?task_id=" . $taskId,
+    "apple_id"       => $appleId,
+    "app_password"   => $appPassword,
 ]);
 
 try {
     $gh->dispatch($payload);
-    echo "OK: GitHub Actions triggered for task #{$taskId}\n";
+    echo "OK: GitHub Actions upload triggered for task #{$taskId}\n";
 } catch (\Throwable $e) {
     echo "ERROR: " . $e->getMessage() . "\n";
 }

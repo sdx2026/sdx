@@ -2,7 +2,7 @@
 <?php
 /**
  * Background auto-submit to TestFlight
- * Called from ApiController::taskCallback
+ * Called from ApiController::taskCallback and TaskService::triggerAutoSubmit
  * Usage: php autosubmit.php <task_id>
  */
 

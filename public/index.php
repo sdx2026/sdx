@@ -217,6 +217,7 @@ $router->get('/api/api-keys', [ApiController::class, 'listApiKeys']);
 $router->post('/api/api-keys', [ApiController::class, 'createApiKey']);
 $router->get('/api/ipas', [ApiController::class, 'listIpas']);
 $router->post('/api/ipas/delete', [ApiController::class, 'deleteIpa']);
+    $router->post("/api/ipas/upload", [ApiController::class, "uploadIpa"]);
 $router->get('/api/settings', [ApiController::class, 'getSettings']);
 $router->post('/api/settings', [ApiController::class, 'saveSettings']);
 $router->get('/api/worker-status', [ApiController::class, 'workerStatus']);
@@ -286,5 +287,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'DELETE') {
     if (preg_match('#^/api/api-keys/(\d+)$#', $uri, $m)) { echo ApiController::deleteApiKey((int)$m[1]); exit; }
     if (preg_match('#^/api/profiles/(\d+)$#', $uri, $m)) { echo ApiController::deleteProfile((int)$m[1]); exit; }
 }
+
+// === PUT method handler ===
+if ($_SERVER['REQUEST_METHOD'] === 'PUT') {
+    if (preg_match('#^/api/users/(\d+)$#', $uri, $m)) { echo ApiController::updateUser((int)$m[1]); exit; }
+}
+
 
 $router->dispatch();

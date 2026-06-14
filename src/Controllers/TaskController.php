@@ -80,8 +80,24 @@ class TaskController
             $fileEntries[] = $singleFile;
         }
 
+
+        // Support pre-uploaded IPA from /ipas page
+        $preIpa = $_GET["ipa"] ?? "";
+        if (!empty($preIpa) && empty($fileEntries)) {
+            $ipaPath = $uploadDir . "/" . basename($preIpa);
+            if (file_exists($ipaPath)) {
+                $fileEntries[] = ["tmp_name" => $ipaPath, "name" => basename($preIpa), "pre_uploaded" => true];
+            }
+        }
         if (empty($fileEntries)) {
-            return Router::json(['error' => 'IPA file required'], 400);
+            return Router::view('tasks_new', [
+                'apps' => self::getAppsList(),
+                'certs' => self::getCertsList(),
+                'profiles' => self::getProfilesList(),
+                'appleAccounts' => self::getAppleAccounts(),
+                'apiKeys' => self::getApiKeys(),
+                'error' => '请上传 IPA 文件',
+            ]);
         }
 
         // Check if it's a batch submit
@@ -149,8 +165,16 @@ class TaskController
     public static function retry(int $id): string
     {
         $pdo = \TfSigner\Core\Database::connection();
-        $pdo->prepare("UPDATE tasks SET status = 'pending', error = NULL, progress = 0, retries = 0 WHERE id = ?")
-            ->execute([$id]);
+        // Auto-increment build to avoid Apple duplicate build error
+        $task = $pdo->prepare("SELECT override_build FROM tasks WHERE id = ?");
+        $task->execute([$id]);
+        $curBuild = $task->fetchColumn();
+        $newBuild = ($curBuild && is_numeric($curBuild)) ? (string)((int)$curBuild + 1) : '';
+        if ($newBuild) {
+            $pdo->prepare("UPDATE tasks SET status = 'pending', error = NULL, progress = 0, retries = 0, override_build = ? WHERE id = ?")->execute([$newBuild, $id]);
+        } else {
+            $pdo->prepare("UPDATE tasks SET status = 'pending', error = NULL, progress = 0, retries = 0 WHERE id = ?")->execute([$id]);
+        }
         Router::redirect('/tasks');
         return '';
     }
@@ -169,8 +193,10 @@ class TaskController
             }
             $zip->close();
             if (!$plist) return null;
-            if (preg_match('/<key>CFBundleIdentifier<\/key>\s*<string>(.+?)<\/string>/s', $plist, $m)) {
-                $bundleId = $m[1];
+            // Use shared parser that handles both XML and binary plists
+            $data = \TfSigner\Controllers\ApiController::parsePlistData($plist);
+            $bundleId = $data['CFBundleIdentifier'] ?? '';
+            if ($bundleId) {
                 $pdo = \TfSigner\Core\Database::connection();
                 $stmt = $pdo->prepare("SELECT id FROM apps WHERE bundle_id = ?");
                 $stmt->execute([$bundleId]);

@@ -1,0 +1,61 @@
+name: 📤 上传 App Store (纯上传)
+
+on:
+  workflow_dispatch:
+    inputs:
+      task_id:
+        description: "服务器任务 ID"
+        required: true
+      signed_ipa_url:
+        description: "已签名 IPA 下载地址"
+        required: true
+      apple_id:
+        description: "Apple ID"
+        required: true
+      apple_password:
+        description: "App 专用密码"
+        required: true
+
+jobs:
+  upload:
+    runs-on: macos-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: 📥 下载已签名 IPA
+        run: |
+          curl -sLo signed.ipa "${{ inputs.signed_ipa_url }}"
+          echo "IPA 下载完成"
+          ls -lh signed.ipa
+
+      - name: 📤 上传 App Store
+        id: upload_step
+        run: |
+          xcrun altool --upload-app -f signed.ipa -t ios \
+            -u "${{ inputs.apple_id }}" \
+            -p "${{ inputs.apple_password }}" \
+            --output-format json > upload_result.json 2>&1
+          cat upload_result.json
+          STATUS=$(python3 -c "import json; d=json.load(open('upload_result.json')); print(d.get('statusCode','unknown'))" 2>/dev/null || echo "unknown")
+          echo "altool_status=$STATUS" >> $GITHUB_OUTPUT
+          if [ "$STATUS" != "0" ]; then
+            ERR=$(python3 -c "import json; d=json.load(open('upload_result.json')); errs=d.get('product-errors',[{'message':'Unknown'}]); print(json.dumps(errs[0], ensure_ascii=False)[:500])" 2>/dev/null || echo '{"message":"Upload failed"}')
+            echo "altool_error=$ERR" >> $GITHUB_OUTPUT
+            exit 1
+          fi
+
+      - name: 📢 通知服务器 - 成功
+        if: success()
+        run: |
+          curl -s -X POST "https://bsj.appssign.cc/api/tasks/${{ inputs.task_id }}/callback" \
+            -H "Content-Type: application/json" \
+            -d '{"status":"completed","result":"已上传 App Store Connect ✅ 等待 TestFlight 处理"}'
+
+      - name: ❌ 通知服务器 - 失败
+        if: failure()
+        run: |
+          ERR_RAW="${{ steps.upload_step.outputs.altool_error }}"
+          ERR_MSG=$(python3 -c "import json,sys; d=json.loads(sys.argv[1]) if sys.argv[1] else {}; print(d.get('message', str(d)[:300]))" "$ERR_RAW" 2>/dev/null || echo "$ERR_RAW")
+          if [ -z "$ERR_MSG" ]; then ERR_MSG='GitHub Actions 上传失败'; fi
+          CALLBACK_JSON=$(python3 -c "import json,sys; print(json.dumps({'status':'failed','error':'Apple 上传错误: ' + sys.argv[1]}))" "$ERR_MSG")
+          curl -s -X POST "https://bsj.appssign.cc/api/tasks/${{ inputs.task_id }}/callback" -H "Content-Type: application/json" -d "$CALLBACK_JSON"

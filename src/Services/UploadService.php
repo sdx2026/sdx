@@ -46,7 +46,7 @@ class UploadService
         if ($validateCode !== 0) {
             return [
                 'success' => false,
-                'stage' => 'validation',            'error' => $uploadCode === 0 ? null : $uploadOutput,
+                'stage' => 'validation',            'error' => $validateResult,
                 'raw' => $validateResult,
             ];
         }

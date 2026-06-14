@@ -29,7 +29,7 @@ class TaskService
             $params['apple_account_id'] ?? null,
             $params['api_key_id'] ?? null,
         ]);
-        $taskId = $pdo->lastInsertId();
+        $taskId = (int)$pdo->lastInsertId();
         $this->notifyAll('task.created', ['task_id' => $taskId]);
         Logger::info("Task created", ['id' => $taskId, 'type' => $params['type'] ?? 'sign_and_upload']);
         return $this->get($taskId);
@@ -103,7 +103,9 @@ class TaskService
         $pdo = Database::connection();
         $pdo->exec("BEGIN IMMEDIATE");
         try {
-            $pdo->exec("UPDATE tasks SET status = 'pending', error = 'Recovered from orphaned state', retries = retries + 1 WHERE status = 'processing' AND started_at < datetime('now', '-30 minutes') AND retries < max_retries");
+            // Recover orphaned processing tasks: increment retries, mark as failed if exhausted
+            $pdo->exec("UPDATE tasks SET status = 'failed', error = 'Orphaned and max retries exhausted' WHERE status = 'processing' AND started_at < datetime('now', '-30 minutes') AND retries >= max_retries - 1");
+            $pdo->exec("UPDATE tasks SET status = 'pending', error = 'Recovered from orphaned state', retries = retries + 1 WHERE status = 'processing' AND started_at < datetime('now', '-30 minutes') AND retries < max_retries - 1");
             
             $stmt = $pdo->prepare("
                 SELECT id FROM tasks 
@@ -347,6 +349,8 @@ class TaskService
             }
 
             $this->updateStatus($taskId, 'completed', result: 'Signed and uploaded to App Store Connect ✅', progress: 100);
+            // Trigger auto-submit to TestFlight in background
+            $this->triggerAutoSubmit($taskId);
             return $uploadResult;
         }
 
@@ -358,21 +362,28 @@ class TaskService
     {
         $pdo = Database::connection();
 
-        // Look up cert & profile
-        $cert = $pdo->prepare("SELECT * FROM certificates WHERE id = ?");
-        $cert->execute([$task['cert_id']]);
-        $cert = $cert->fetch();
+        // ── Step 1: Local signing ──
+        $this->updateStatus($taskId, 'processing', progress: 5, result: 'Starting local signing...');
 
-        $profile = $pdo->prepare("SELECT * FROM provisioning_profiles WHERE id = ?");
-        $profile->execute([$task['profile_id']]);
-        $profile = $profile->fetch();
+        $signer = new SigningService();
+        $outputIpa = Config::get('storage.ipas') . '/signed_' . $taskId . '_' . time() . '.ipa';
 
-        if (!$cert || !$profile) {
-            throw new \RuntimeException('[E1001] Certificate or profile not found for GitHub sign.');
-        }
-// Validate cert/profile are active        if (empty($cert["is_active"])) {            throw new \RuntimeException("[E1003] Certificate is not active: " . ($cert["name"] ?? "unknown"));        }        if (empty($profile["is_active"])) {            throw new \RuntimeException("[E2003] Provisioning profile is not active: " . ($profile["name"] ?? "unknown"));        }        // Validate bundle_id: if task has app_id, profile bundle must match        if (!empty($task["app_id"])) {            $app = $pdo->prepare("SELECT bundle_id, name FROM apps WHERE id = ?");            $app->execute([(int)$task["app_id"]]);            $appData = $app->fetch();            if ($appData && !empty($appData["bundle_id"]) && $appData["bundle_id"] !== ($profile["bundle_id"] ?? "")) {                throw new \RuntimeException("[E2004] Profile bundle ID \"" . ($profile["bundle_id"] ?? "?") . "\" does not match app \"" . $appData["name"] . "\" bundle ID \"" . $appData["bundle_id"] . "\"");            }        }
+        $signer->resign(
+            $task['input_ipa'],
+            $outputIpa,
+            (int)($task['cert_id'] ?? 0),
+            (int)($task['profile_id'] ?? 0),
+            $task['override_version'] ?? '',
+            $task['override_build'] ?? '',
+            function (int $pct, string $msg) use ($taskId) {
+                $this->updateStatus($taskId, 'processing', progress: min(5 + (int)($pct * 0.5), 55), result: $msg);
+            }
+        );
 
-        // Resolve Apple credentials (always use DB when saved account selected)
+        $pdo->prepare("UPDATE tasks SET output_ipa = ? WHERE id = ?")->execute([$outputIpa, $taskId]);
+        $this->updateStatus($taskId, 'processing', progress: 55, result: 'Local signing complete, dispatching to GitHub for upload...');
+
+        // ── Step 2: Dispatch to GitHub Actions for upload only ──
         $appleId = $task['apple_id'] ?? '';
         $appPassword = $task['app_password'] ?? '';
         if (!empty($task['apple_account_id'])) {
@@ -394,23 +405,16 @@ class TaskService
 
         $baseUrl = Config::get('app.url', 'https://bsj.appssign.cc');
 
-        // Delegate payload building + dispatch to GitHubService (single source of truth)
-        $gh = new \TfSigner\Services\GitHubService();
-        $payload = $gh->buildPayload([
-            'task_id'          => (string)$taskId,
-            'ipa_url'          => $baseUrl . '/download/' . basename($task['input_ipa']) . '?task_id=' . $taskId,
-            'cert_url'         => $baseUrl . '/download/' . basename($cert['cert_path'] ?? '') . '?task_id=' . $taskId,
-            'key_url'          => $baseUrl . '/download/' . basename($cert['key_path'] ?? '') . '?task_id=' . $taskId,
-            'profile_url'      => $baseUrl . '/download/' . basename($profile['profile_path'] ?? '') . '?task_id=' . $taskId,
-            'bundle_id'        => $profile['bundle_id'] ?? '',
-            'apple_id'         => $appleId,
-            'app_password'     => $appPassword,
-            'override_version' => $task['override_version'] ?? '',
-            'override_build'   => $task['override_build'] ?? '',
+        $gh = new \TfSigner\Services\GitHubService('sdx2026/sdx', 'upload_only.yml');
+        $payload = $gh->buildUploadOnlyPayload([
+            'task_id'        => (string)$taskId,
+            'signed_ipa_url' => $baseUrl . '/download/' . basename($outputIpa) . '?task_id=' . $taskId,
+            'apple_id'       => $appleId,
+            'app_password'   => $appPassword,
         ]);
 
         $result = $gh->dispatch($payload);
-        $this->updateStatus($taskId, 'processing', result: 'GitHub Actions triggered', progress: 25);
+        $this->updateStatus($taskId, 'processing', result: 'GitHub Actions upload triggered', progress: 60);
         return $result;
     }
 
@@ -430,4 +434,18 @@ class TaskService
             'processing' => $processing,
         ];
     }
+
+
+    /**
+     * Trigger auto-submit to TestFlight in background (non-blocking)
+     */
+    private function triggerAutoSubmit(int $taskId): void
+    {
+        $scriptPath = realpath(__DIR__ . '/../../autosubmit.php');
+        $logFile = \TfSigner\Core\Config::get('storage.logs') . '/autosubmit.log';
+        if ($scriptPath) {
+            exec(sprintf('nohup php %s %d >> %s 2>&1 &', escapeshellarg($scriptPath), $taskId, escapeshellarg($logFile)));
+        }
+    }
+
 }

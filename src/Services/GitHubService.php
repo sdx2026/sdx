@@ -84,6 +84,26 @@ class GitHubService
         ];
     }
 
+
+    // ── Upload-only payload builder ───────────────────────
+
+    public function buildUploadOnlyPayload(array $params): array
+    {
+        $branch = $params['ref'] ?? $this->detectDefaultBranch();
+
+        $inputs = [
+            'task_id'        => (string)($params['task_id'] ?? '0'),
+            'signed_ipa_url' => $params['signed_ipa_url'] ?? '',
+            'apple_id'       => $params['apple_id'] ?? '',
+            'apple_password' => $params['app_password'] ?? '',
+        ];
+
+        return [
+            'ref'    => $branch,
+            'inputs' => $inputs,
+        ];
+    }
+
     // ── Dispatch ──────────────────────────────────────────
 
     public function dispatch(array $payload): array

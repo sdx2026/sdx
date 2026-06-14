@@ -285,6 +285,7 @@ class AppleApi
         $start = time();
         $interval = 30;
         
+        $noBuildRetries = 0;
         while (time() - $start < $maxWaitSec) {
             $build = null;
             if (!empty($version)) {
@@ -295,17 +296,27 @@ class AppleApi
                 $result = $this->getBuildStatus($appId);
                 $build = $result['data'][0] ?? null;
             }
-            if ($build) {
-                $state = $build['attributes']['processingState'] ?? 'PROCESSING';
-                if ($state === 'VALID') {
-                    Logger::info("Build processing complete", ['build_id' => $build['id'], 'version' => $build['attributes']['version'] ?? '?']);
-                    return $build;
+            // Fail fast if no builds exist at all (retry a few times to allow for processing delay)
+            if (!$build) {
+                $noBuildRetries++;
+                if ($noBuildRetries >= 3) {
+                    throw new \RuntimeException("No builds found for app {$appId}. Upload may have failed or build is still processing.");
                 }
-                if ($state === 'INVALID') {
-                    throw new \RuntimeException("Build processing failed (INVALID state)");
-                }
-                Logger::info("Build still processing", ['state' => $state, 'version' => $build['attributes']['version'] ?? '?']);
+                Logger::info("No builds found yet, retrying...", ['attempt' => $noBuildRetries, 'app_id' => $appId]);
+                sleep($interval);
+                $interval = min($interval + 10, 60);
+                continue;
             }
+            $noBuildRetries = 0;
+            $state = $build['attributes']['processingState'] ?? 'PROCESSING';
+            if ($state === 'VALID') {
+                Logger::info("Build processing complete", ['build_id' => $build['id'], 'version' => $build['attributes']['version'] ?? '?']);
+                return $build;
+            }
+            if ($state === 'INVALID') {
+                throw new \RuntimeException("Build processing failed (INVALID state)");
+            }
+            Logger::info("Build still processing", ['state' => $state, 'version' => $build['attributes']['version'] ?? '?']);
             sleep($interval);
             $interval = min($interval + 10, 60); // Progressive backoff
         }
@@ -463,15 +474,29 @@ class AppleApi
         $buildId = $build['id'];
         Logger::info("Build ready", ['build_id' => $buildId, 'version' => $build['attributes']['version'] ?? '?']);
 
-        // Step 2: Submit for Beta App Review
+        // Step 2: Submit for Beta App Review (with QC state retry)
         Logger::info("Step 2: Submitting for Beta App Review...");
-        try {
-            $review = $this->submitForBetaReview($buildId);
-            Logger::info("Beta review submitted", ['submission_id' => $review['data']['id'] ?? '?']);
-        } catch (\RuntimeException $e) {
-            // If already submitted, this is fine
-            if (strpos($e->getMessage(), '409') === false) throw $e;
-            Logger::info("Beta review already submitted");
+        $reviewSubmitted = false;
+        $reviewRetries = 0;
+        $maxReviewRetries = 10;
+        while (!$reviewSubmitted && $reviewRetries < $maxReviewRetries) {
+            try {
+                $review = $this->submitForBetaReview($buildId);
+                Logger::info("Beta review submitted", ["submission_id" => $review["data"]["id"] ?? "?"]);
+                $reviewSubmitted = true;
+            } catch (\RuntimeException $e) {
+                if (strpos($e->getMessage(), "409") !== false) {
+                    Logger::info("Beta review already submitted");
+                    $reviewSubmitted = true;
+                } elseif (strpos($e->getMessage(), "422") !== false && strpos($e->getMessage(), "not in a valid processing state") !== false) {
+                    $reviewRetries++;
+                    if ($reviewRetries >= $maxReviewRetries) throw $e;
+                    Logger::info("QC not ready, retrying in 60s", ["attempt" => $reviewRetries]);
+                    sleep(60);
+                } else {
+                    throw $e;
+                }
+            }
         }
 
         // Step 3: Get or create beta group
@@ -636,27 +661,4 @@ class AppleApi
         return $r . $s;
     }
 
-    private static function readDerLength(string $data, int &$pos): int
-    {
-        $byte = ord($data[$pos]);
-        $pos++;
-        if ($byte < 128) return $byte;
-        $numBytes = $byte & 0x7F;
-        $len = 0;
-        for ($i = 0; $i < $numBytes; $i++) {
-            $len = ($len << 8) | ord($data[$pos]);
-            $pos++;
-        }
-        return $len;
-    }
-
-    private static function skipDerLength(string $data, int &$pos): int
-    {
-        $byte = ord($data[$pos]);
-        $pos++;
-        if ($byte < 128) return 1;
-        $numBytes = $byte & 0x7F;
-        $pos += $numBytes;
-        return 1 + $numBytes;
-    }
 }

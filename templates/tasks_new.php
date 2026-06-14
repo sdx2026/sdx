@@ -3,12 +3,22 @@
 <h1>➕ 新建签名任务</h1>
 
 <div class="card">
+
+        <?php $preIpa = $_GET["ipa"] ?? ""; if (!empty($preIpa)): $ipaPath = \TfSigner\Core\Config::get("storage.ipas") . "/" . basename($preIpa); $exists = file_exists($ipaPath); $preSize = $exists ? round(filesize($ipaPath)/1048576, 1) . " MB" : "文件不存在"; ?>
+        <div style="background:rgba(34,197,94,0.08);border:1px dashed var(--green);padding:12px;border-radius:var(--radius);margin-bottom:16px;">
+            📦 预上传 IPA：<strong><?= htmlspecialchars(basename($preIpa)) ?></strong>（<?= $preSize ?>）
+            <?php if (!$exists): ?><span style="color:var(--red);">⚠ 文件未找到，请重新上传</span><?php endif; ?>
+        </div>
+        <?php endif; ?>
+        <?php if (!empty($error)): ?>
+        <div class="error" style="background:rgba(239,68,68,0.1);border:1px solid var(--red);padding:12px;border-radius:var(--radius);margin-bottom:16px;">❌ <?= htmlspecialchars($error) ?></div>
+        <?php endif; ?>
     <form method="POST" action="/tasks" enctype="multipart/form-data" id="taskForm">
         <div class="form-group">
             <label>任务类型</label>
             <select name="type">
                 <option value="sign_and_upload">签名 + 上传 (本地zsign)</option>
-                <option value="github_sign">🚀 GitHub Actions 签名 + 上传 (macOS)</option>
+                <option value="github_sign">🚀 本地签名 + GitHub 上传 (macOS)</option>
                 <option value="sign_only">仅签名</option>
                 <option value="upload_only">仅上传</option>
             </select>
@@ -225,8 +235,8 @@ document.getElementById('batchMode').addEventListener('change', function() {
 
 // Auto-parse IPA on file select
 document.getElementById('ipaFileSingle').addEventListener('change', parseFile);
-document.getElementById('ipaFiles').addEventListener('change', async function() {
-    const files = this.files;
+document.getElementById('ipaFiles').addEventListener('change', async function(e) {
+    const files = (e.target || this).files;
     const div = document.getElementById('parseResult');
     div.style.display = 'block';
     let html = '<strong>📦 已选择 ' + files.length + ' 个文件:</strong><br>';
@@ -236,8 +246,8 @@ document.getElementById('ipaFiles').addEventListener('change', async function() 
     div.innerHTML = html;
 });
 
-async function parseFile() {
-    const file = this.files[0];
+async function parseFile(e) {
+    const file = (e.target || this).files[0];
     if (!file) return;
     const fd = new FormData();
     fd.append('ipa_file', file);
