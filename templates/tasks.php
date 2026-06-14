@@ -57,7 +57,7 @@
                     'sign_only' => '仅签名',
                     'upload_only' => '仅上传',
                     'sign_and_upload' => '签名+上传',
-                    'github_sign' => 'GitHub签名',
+                    'github_sign' => '本地签名+GitHub上传',
                     default => htmlspecialchars($t['type']),
                 } ?>
             </td>
@@ -68,6 +68,8 @@
                     <div class="progress-bar"><div class="progress-fill" style="width:<?= $t['progress'] ?>%"></div></div>
                     <span class="text-muted"><?= $t['progress'] ?>%</span>
                 </div>
+                <?php if (!empty($t['result'])): ?><div class="text-muted" style="font-size:0.75rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($t['result']) ?>"><?= htmlspecialchars($t['result']) ?></div><?php endif; ?>
+                <?php if (!empty($t['error'])): ?><div style="color:var(--red);font-size:0.75rem;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="<?= htmlspecialchars($t['error']) ?>">❌ <?= htmlspecialchars($t['error']) ?></div><?php endif; ?>
             </td>
             <td class="text-muted"><?= (int)$t['retries'] ?>/<?= (int)$t['max_retries'] ?></td>
             <td class="text-muted" style="font-size:0.8rem;"><?= $t['updated_at'] ?></td>
