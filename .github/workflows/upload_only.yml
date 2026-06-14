@@ -29,7 +29,7 @@ jobs:
           ls -lh cert.pem key.pem profile.mobileprovision
 
           echo 'Creating P12...'
-          openssl pkcs12 -export -in cert.pem -inkey key.pem -out cert.p12 -passout pass:temp123
+          openssl pkcs12 -export -nomac -in cert.pem -inkey key.pem -out cert.p12 -passout pass:temp123
 
           echo 'Importing into keychain...'
           security create-keychain -p temp123 build.keychain
