@@ -667,6 +667,10 @@ unset($s["admin_password"]);
             if (!$csr) throw new \RuntimeException('OpenSSL CSR failed: ' . openssl_error_string() . ' | dn=' . json_encode($dn));
             openssl_csr_export($csr, $csrOut);
             
+            $certsDir = \TfSigner\Core\Config::get('storage.certs');
+            $baseName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $name) . '_' . time();
+            $certPath = $certsDir . '/' . $baseName . '.pem';
+            $keyPathLocal = $certsDir . '/' . $baseName . '.key';
             $result = $api->createCertificate($csrOut, $type);
             $certContent = $result['data']['attributes']['certificateContent'] ?? '';
             if (!$certContent) return Router::json(['error' => 'Apple API returned no certificate'], 500);
@@ -678,10 +682,6 @@ unset($s["admin_password"]);
                 $certPem = $certContent;
             }
             
-            $certsDir = \TfSigner\Core\Config::get('storage.certs');
-            $baseName = preg_replace('/[^a-zA-Z0-9_-]/', '_', $name) . '_' . time();
-            $certPath = $certsDir . '/' . $baseName . '.pem';
-            $keyPathLocal = $certsDir . '/' . $baseName . '.key';
             file_put_contents($certPath, $certPem);
             file_put_contents($keyPathLocal, $privKeyOut);
             chmod($keyPathLocal, 0600);
@@ -699,22 +699,36 @@ unset($s["admin_password"]);
             Router::logOp('cert_apple_gen', $name);
             return Router::json(['success' => true, 'id' => $pdo->lastInsertId(), 'name' => $name, 'expires_at' => $expiresAt]);
         } catch (\Throwable $e) {
-            // 409 = certificate already exists — reuse the existing one
+            // 409 = certificate already exists — auto-revoke and retry
             if (strpos($e->getMessage(), "409") !== false || strpos($e->getMessage(), "already have a current") !== false) {
                 $existingCerts = $api->listCertificates($type);
-                $appleCert = $existingCerts["data"][0] ?? null;
-                if ($appleCert) {
-                    $localCert = $pdo->prepare("SELECT id, name, cert_path, key_path FROM certificates WHERE apple_cert_id = ? AND is_active = 1");
-                    $localCert->execute([$appleCert["id"]]);
-                    $local = $localCert->fetch();
-                    if ($local) {
-                        Router::logOp("cert_apple_reuse", $local["name"]);
-                        return Router::json(["success" => true, "id" => $local["id"], "name" => $local["name"], "reused" => true]);
-                    }
-                    return Router::json(["error" => "Apple 账号已存在分发证书，但本地未同步。请前往 Apple Developer 下载后手动导入，或删除本地证书后重试。"], 409);
+                $appleCerts = $existingCerts["data"] ?? [];
+                foreach ($appleCerts as $oldCert) {
+                    try { $api->revokeCertificate($oldCert["id"]); Router::logOp("cert_apple_revoke", $oldCert["id"]); } catch (\Throwable $e2) {}
                 }
+                try {
+                    $result = $api->createCertificate($csrOut, $type);
+                    $certContent = $result["data"]["attributes"]["certificateContent"] ?? "";
+                    if (!$certContent) return Router::json(["error" => "Apple API returned no certificate after retry"], 500);
+                    if (strpos($certContent, "-----BEGIN") === false) {
+                        $certPem = "-----BEGIN CERTIFICATE-----\n" . chunk_split($certContent, 64, "\n") . "-----END CERTIFICATE-----\n";
+                    } else {
+                        $certPem = $certContent;
+                    }
+                    file_put_contents($certPath, $certPem);
+                    $certInfo = openssl_x509_parse($certPem);
+                    $serial = $certInfo["serialNumber"] ?? "";
+                    $expiresAt = date("Y-m-d H:i:s", $certInfo["validTo_time_t"] ?? time());
+                    $appleCertResourceId = $result["data"]["id"] ?? "";
+                    $pdo->prepare("INSERT INTO certificates (name, type, cert_path, key_path, password, serial, expires_at, team_id, is_active, apple_cert_id) VALUES (?, ?, ?, ?, '', ?, ?, ?, 1, ?)")->execute([$name, $type === "IOS_DISTRIBUTION" ? "distribution" : "development", $certPath, $keyPathLocal, $serial, $expiresAt, $accountTeamId, $appleCertResourceId]);
+                    Router::logOp("cert_apple_gen", $name);
+                    return Router::json(["success" => true, "id" => $pdo->lastInsertId(), "name" => $name, "expires_at" => $expiresAt]);
+                } catch (\Throwable $retryErr) {
+                    return Router::json(["error" => "吊销旧证书后重试失败: " . $retryErr->getMessage()], 500);
+                }
+            } else {
+                return Router::json(["error" => $e->getMessage()], 500);
             }
-            return Router::json(["error" => $e->getMessage()], 500);
         } finally {
             @unlink($keyPath);
         }
@@ -767,8 +781,8 @@ unset($s["admin_password"]);
             $profileContent = base64_decode($profile['data']['attributes']['profileContent'] ?? '') ?: '';
             if (!$profileContent) return Router::json(['error' => 'Apple API returned no profile'], 500);
             
-            $certsDir = \TfSigner\Core\Config::get('storage.certs');
             $fname = 'profile_apple_' . time() . '.mobileprovision';
+            $certsDir = \TfSigner\Core\Config::get('storage.certs');
             $path = $certsDir . '/' . $fname;
             file_put_contents($path, $profileContent);
             

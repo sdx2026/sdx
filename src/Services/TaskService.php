@@ -275,11 +275,16 @@ class TaskService
             $signer = new SigningService();
             $outputIpa = Config::get('storage.ipas') . '/output_' . $taskId . '_' . time() . '.ipa';
 
+            $certId = (int)($task['cert_id'] ?? 0);
+            $profileId = (int)($task['profile_id'] ?? 0);
+            if ($certId <= 0) throw new \RuntimeException('[E1001] No signing certificate selected');
+            if ($profileId <= 0) throw new \RuntimeException('[E2001] No provisioning profile selected');
+
             $signer->resign(
                 $task['input_ipa'],
                 $outputIpa,
-                (int)($task['cert_id'] ?? 0),
-                (int)($task['profile_id'] ?? 0),
+                $certId,
+                $profileId,
                 $task['override_version'] ?? '',
                 $task['override_build'] ?? '',
                 function (int $pct, string $msg) use ($taskId) {
@@ -361,6 +366,18 @@ class TaskService
     private function processGithubSign(int $taskId, array $task): array
     {
         $pdo = Database::connection();
+
+        // ── Validate cert and profile exist ──
+        $certId = (int)($task['cert_id'] ?? 0);
+        $profileId = (int)($task['profile_id'] ?? 0);
+        if ($certId <= 0) throw new \RuntimeException('[E1001] No signing certificate selected. Please select a certificate when creating task');
+        if ($profileId <= 0) throw new \RuntimeException('[E2001] No provisioning profile selected. Please select a profile when creating task');
+        $certCheck = $pdo->prepare("SELECT id FROM certificates WHERE id = ?");
+        $certCheck->execute([$certId]);
+        if (!$certCheck->fetch()) throw new \RuntimeException("[E1001] Certificate not found: {$certId}");
+        $profileCheck = $pdo->prepare("SELECT id FROM provisioning_profiles WHERE id = ?");
+        $profileCheck->execute([$profileId]);
+        if (!$profileCheck->fetch()) throw new \RuntimeException("[E2001] Profile not found: {$profileId}");
 
         // ── Step 1: Local signing ──
         $this->updateStatus($taskId, 'processing', progress: 5, result: 'Starting local signing...');

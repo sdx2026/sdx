@@ -105,13 +105,9 @@ class TaskController
 
         foreach ($fileEntries as $entry) {
             try {
-                $destName = 'input_' . time() . '_' . rand(1000, 9999) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', $entry['name']);
+                $destName = 'input_' . time() . '_' . rand(1000, 9999) . '_' . preg_replace('/[^a-zA-Z0-9._-]/', '_', ($entry['name'] ?? 'uploaded.ipa') ?: 'uploaded.ipa');
                 $inputIpa = $uploadDir . '/' . $destName;
-                if (!empty($entry['pre_uploaded'])) {
-                    copy($entry['tmp_name'], $inputIpa);
-                } else {
-                    move_uploaded_file($entry['tmp_name'], $inputIpa);
-                }
+                if (!empty($entry['pre_uploaded'])) { if (!copy($entry['tmp_name'], $inputIpa)) throw new \RuntimeException('Failed to copy IPA: ' . $entry['tmp_name']); } else { if (!move_uploaded_file($entry['tmp_name'], $inputIpa)) throw new \RuntimeException('Failed to save uploaded IPA'); }
 
                 // Try to auto-detect app by parsing IPA
                 $appId = $_POST['app_id'] ?? null;
@@ -134,7 +130,7 @@ class TaskController
                 ]);
                 $created[] = $task['id'];
             } catch (\Throwable $e) {
-                $errors[] = $entry['name'] . ': ' . $e->getMessage();
+                $errors[] = ($entry['name'] ?? 'file') . ': ' . $e->getMessage();
             }
         }
 
@@ -144,18 +140,6 @@ class TaskController
                 'created' => $created,
                 'errors' => $errors,
                 'message' => '创建 ' . count($created) . ' 个任务' . (count($errors) ? '，' . count($errors) . ' 个失败' : ''),
-            ]);
-        }
-
-        // Show error on form if single task creation failed
-        if (!empty($errors)) {
-            return Router::view('tasks_new', [
-                'apps' => self::getAppsList(),
-                'certs' => self::getCertsList(),
-                'profiles' => self::getProfilesList(),
-                'appleAccounts' => self::getAppleAccounts(),
-                'apiKeys' => self::getApiKeys(),
-                'error' => implode('; ', $errors),
             ]);
         }
 
@@ -181,16 +165,8 @@ class TaskController
     public static function retry(int $id): string
     {
         $pdo = \TfSigner\Core\Database::connection();
-        // Auto-increment build to avoid Apple duplicate build error
-        $task = $pdo->prepare("SELECT override_build FROM tasks WHERE id = ?");
-        $task->execute([$id]);
-        $curBuild = $task->fetchColumn();
-        $newBuild = ($curBuild && is_numeric($curBuild)) ? (string)((int)$curBuild + 1) : '';
-        if ($newBuild) {
-            $pdo->prepare("UPDATE tasks SET status = 'pending', error = NULL, progress = 0, retries = 0, override_build = ? WHERE id = ?")->execute([$newBuild, $id]);
-        } else {
-            $pdo->prepare("UPDATE tasks SET status = 'pending', error = NULL, progress = 0, retries = 0 WHERE id = ?")->execute([$id]);
-        }
+        $pdo->prepare("UPDATE tasks SET status = 'pending', error = NULL, progress = 0, retries = 0 WHERE id = ?")
+            ->execute([$id]);
         Router::redirect('/tasks');
         return '';
     }
