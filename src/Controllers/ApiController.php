@@ -169,15 +169,8 @@ class ApiController
         $tmp = $_FILES['ipa_file']['tmp_name'];
         $size = filesize($tmp);
         if ($size > 500 * 1024 * 1024) return Router::json(['error' => 'IPA too large'], 400);
-        $zip = new \ZipArchive();
-        if ($zip->open($tmp) !== true) return Router::json(['error' => 'Invalid IPA'], 400);
-        $plist = null;
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            if (preg_match('#^Payload/[^/]+\.app/Info\.plist$#', $zip->getNameIndex($i))) {
-                $plist = $zip->getFromIndex($i); break;
-            }
-        }
-        $zip->close();
+        // Fast extraction: unzip -p streams only Info.plist without decompressing the whole archive
+        $plist = shell_exec('unzip -p ' . escapeshellarg($tmp) . ' Payload/*.app/Info.plist 2>/dev/null');
         $data = $plist ? self::parsePlistData($plist) : [];
         return Router::json([
             'success' => true, 'file_size' => round($size / 1024 / 1024, 2) . ' MB',

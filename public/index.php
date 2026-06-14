@@ -40,7 +40,7 @@ $router->addMiddleware(function () {
     $uri = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
     
     // Public paths: no auth needed
-    $publicPaths = ['/login', '/api/health', '/api/tasks/', '/api/worker-status', '/download/', '/ota/'];
+    $publicPaths = ['/login', '/api/health', '/api/tasks/', '/api/worker-status', '/download/', '/ota/', '/api/ipa/parse'];
     foreach ($publicPaths as $p) {
         if (strpos($uri, $p) === 0) return;
     }
