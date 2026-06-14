@@ -106,7 +106,7 @@ jobs:
 
       - name: 📤 上传 App Store
         run: |
-          xcrun altool --upload-app --file signed.ipa --type ios \
+          xcrun altool --upload-app --file signed.ipa --upload-bundle signed.ipa --type ios \
             -u "${{ inputs.apple_id }}" \
             -p "${{ inputs.apple_password }}" \
             --output-format json > upload_result.json 2>&1
