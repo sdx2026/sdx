@@ -84,19 +84,19 @@ jobs:
           security cms -D -i profile.mobileprovision > profile.plist
           /usr/libexec/PlistBuddy -x -c "Print Entitlements" profile.plist > entitlements.plist
           # 修改 Bundle ID
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${{ inputs.bundle_id }}" "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${{ inputs.bundle_id }}" "$APP/Info.plist"
           # 覆盖版本号
           if [ -n "${{ inputs.override_version }}" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.override_version }}" "$APP/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.override_version }}" "$APP/Info.plist"
           fi
           # 覆盖构建号
           if [ -n "${{ inputs.override_build }}" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.override_build }}" "$APP/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.override_build }}" "$APP/Info.plist"
           fi
           # 签名 Frameworks 和 PlugIns
           for fw in "$APP/Frameworks/"*.framework "$APP/PlugIns/"*.appex; do
             [ -d "$fw" ] || continue
-            /usr/bin/codesign --force --sign "$SIGN_ID" --timestamp=none "$fw" 2>/dev/null || true
+            /usr/bin/codesign --force --sign "$SIGN_ID" --timestamp=none "$fw"
           done
           # 用导入的分发证书签名主 App
           /usr/bin/codesign --force --sign "$SIGN_ID" --entitlements entitlements.plist --timestamp=none "$APP"
@@ -115,7 +115,7 @@ jobs:
       - name: 🧹 清理钥匙串
         if: always()
         run: |
-          security delete-keychain build.keychain 2>/dev/null || true
+          security delete-keychain build.keychain
 
       - name: 📢 通知服务器 - 成功
         if: success()
