@@ -113,6 +113,7 @@ class GitHubService
         }
 
         $url = "https://api.github.com/repos/{$this->repo}/actions/workflows/{$this->workflowFile}/dispatches";
+        \TfSigner\Core\Logger::info("GitHub dispatch", ["url" => $url]);
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [
