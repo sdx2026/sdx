@@ -118,7 +118,7 @@ class SigningService
         }
 
         $cmd .= ' -m ' . escapeshellarg($profilePath);
-        $cmd .= ' -o ' . escapeshellarg($outputIpa);
+        $cmd .= ' -2 -o ' . escapeshellarg($outputIpa);
         if ($bundleId) $cmd .= ' -b ' . escapeshellarg($bundleId);
         // Apply version/build overrides via zsign options
         if ($overrideBuild) $cmd .= ' -r ' . escapeshellarg($overrideBuild);  // zsign -r = --bundle_version = CFBundleVersion
@@ -540,38 +540,13 @@ class SigningService
         }
 
         if ($infoPlistPath && file_exists($infoPlistPath)) {
-            // Parse and modify Info.plist (binary plist on macOS, XML on Linux)
-            $plistContent = file_get_contents($infoPlistPath);
-
-            $modified = false;
-
-            // Replace CFBundleShortVersionString
-            if ($version) {
-                $plistContent = preg_replace(
-                    '/(<key>CFBundleShortVersionString<\/key>\s*<string>)[^<]*(<\/string>)/s',
-                    '$1' . $version . '$2',
-                    $plistContent,
-                    -1,
-                    $count
-                );
-                if ($count > 0) $modified = true;
-            }
-
-            // Replace CFBundleVersion (build number)
-            if ($build) {
-                $plistContent = preg_replace(
-                    '/(<key>CFBundleVersion<\/key>\s*<string>)[^<]*(<\/string>)/s',
-                    '$1' . $build . '$2',
-                    $plistContent,
-                    -1,
-                    $count
-                );
-                if ($count > 0) $modified = true;
-            }
-
-            if ($modified) {
-                file_put_contents($infoPlistPath, $plistContent);
-            }
+            // Use python3 plistlib to handle both XML and binary plists reliably
+            $pyCmd = "import plistlib; import sys; p=" . escapeshellarg($infoPlistPath) . "; d=plistlib.load(open(p,'rb'))";
+            if ($version) $pyCmd .= "; d['CFBundleShortVersionString']=" . escapeshellarg($version);
+            if ($build) $pyCmd .= "; d['CFBundleVersion']=" . escapeshellarg($build);
+            $pyCmd .= "; plistlib.dump(d, open(p, 'wb'))";
+            exec("python3 -c " . escapeshellarg($pyCmd), $pyOut, $pyCode);
+            $modified = ($pyCode === 0);
         }
 
         // Re-zip IPA
