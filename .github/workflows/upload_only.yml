@@ -18,7 +18,7 @@ on:
 
 jobs:
   upload:
-    runs-on: macos-latest
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 15
 
     steps:

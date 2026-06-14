@@ -38,7 +38,7 @@ on:
 
 jobs:
   sign_and_upload:
-    runs-on: macos-latest
+    runs-on: [self-hosted, macOS]
     timeout-minutes: 30
 
     steps:
