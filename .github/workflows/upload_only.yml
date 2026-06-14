@@ -37,7 +37,14 @@ jobs:
           security unlock-keychain -p temp123 build.keychain
           security import cert.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k temp123 build.keychain
+          echo "=== Debug: keychain identities ==="
+          security find-identity -v -p codesigning build.keychain 2>&1 || true
           security find-identity -v -p codesigning build.keychain | grep -E 'Apple Distribution|iPhone Distribution' | head -1 | awk '{print $2}' > SIGN_IDENTITY
+          if [ ! -s SIGN_IDENTITY ]; then
+            echo "WARNING: No SHA-1 identity, trying by name..."
+            security find-identity -v -p codesigning build.keychain 2>&1 | grep -oE "iPhone Distribution: [^"]+|Apple Distribution: [^"]+" | head -1 > SIGN_IDENTITY
+          fi
+          if [ ! -s SIGN_IDENTITY ]; then echo "FATAL: No identity!"; exit 1; fi
           echo "Sign identity: $(cat SIGN_IDENTITY)"
 
           echo 'Extracting IPA...'
@@ -60,14 +67,14 @@ jobs:
           echo 'Signing frameworks and plugins...'
           for fw in "$APP/Frameworks/"*.framework "$APP/PlugIns/"*.appex; do
             [ -d "$fw" ] || continue
-            /usr/bin/codesign --force --sign "$(cat SIGN_IDENTITY)" --timestamp=none "$fw"
+            /usr/bin/codesign --force --sign "$(cat SIGN_IDENTITY)" --timestamp=none "$fw" || { echo "FAILED sign framework"; exit 1; }
           done
 
           echo 'Signing main app...'
-          /usr/bin/codesign --force --sign "$(cat SIGN_IDENTITY)" --entitlements entitlements.plist --timestamp=none "$APP"
+          /usr/bin/codesign --force --sign "$(cat SIGN_IDENTITY)" --entitlements entitlements.plist --timestamp=none "$APP" || { echo "FAILED sign main app"; exit 1; }
 
           echo 'Verifying signature...'
-          /usr/bin/codesign -dvvv "$APP" 2>&1
+          /usr/bin/codesign -dvvv "$APP" 2>&1 || { echo "FAILED verify"; exit 1; }
 
           echo 'Re-packaging...'
           rm -f signed.ipa
