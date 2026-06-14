@@ -66,14 +66,14 @@ jobs:
           security import cert.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k temp123 build.keychain
           # 查出分发证书的 SHA-1 身份
-          security find-identity -v -p codesigning build.keychain | grep "Apple Distribution" | head -1 | awk '{print $2}' > SIGN_IDENTITY
+          security find-identity -v -p codesigning build.keychain | grep -E "Apple Distribution|iPhone Distribution" | head -1 | awk '{print $2}' > SIGN_IDENTITY
           echo "签名身份: $(cat SIGN_IDENTITY)"
 
       - name: ✍️ 重签名
         run: |
           SIGN_ID=$(cat SIGN_IDENTITY)
           if [ -z "$SIGN_ID" ]; then
-            echo "❌ 未找到 Apple Distribution 签名身份"
+            echo "❌ 未找到分发证书签名身份"
             security find-identity -v -p codesigning build.keychain
             exit 1
           fi
