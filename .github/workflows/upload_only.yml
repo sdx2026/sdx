@@ -1,75 +1,44 @@
 name: TF Upload to App Store
-
 on:
   workflow_dispatch:
     inputs:
-      task_id:
-        description: "Task ID"
-        required: true
-      signed_ipa_url:
-        description: "Signed IPA URL"
-        required: true
-      apple_id:
-        description: "Apple ID"
-        required: true
-      apple_password:
-        description: "App Password"
-        required: true
-
+      task_id: {description: Task ID, required: true}
+      signed_ipa_url: {description: Signed IPA URL, required: true}
+      apple_id: {description: Apple ID, required: true}
+      apple_password: {description: App Password, required: true}
 jobs:
   upload:
     runs-on: [self-hosted, macOS]
     timeout-minutes: 15
     steps:
-      - name: Download signed IPA
+      - name: Download IPA
         run: curl -sLo signed.ipa "${{ inputs.signed_ipa_url }}" && ls -lh signed.ipa
-
       - name: Upload to App Store
-        id: upload_step
         run: |
-          xcrun altool --upload-app -f signed.ipa -t ios \
-            -u "${{ inputs.apple_id }}" \
-            -p "${{ inputs.apple_password }}" \
-            --output-format json > upload_result.json 2>&1
-          python3 << "PYEOF"
-          import json
-          d = json.load(open("upload_result.json"))
-          status = d.get("statusCode", "unknown")
-          print("STATUS=" + str(status))
-          if str(status) != "0":
-              errs = d.get("product-errors", d.get("errors", []))
-              if errs:
-                  msg = errs[0].get("message", str(errs[0]))
-              else:
-                  msg = d.get("statusMessage", str(d))
-              with open("upload_error.txt", "w") as f:
-                  f.write(msg)
-              exit(1)
-          PYEOF
-          if [ $? -ne 0 ]; then exit 1; fi
-
-      - name: Notify success
-        if: success()
+          xcrun altool --upload-app -f signed.ipa -t ios             -u "${{ inputs.apple_id }}"             -p "${{ inputs.apple_password }}"             --output-format json > upload_result.json 2>&1
+          cat upload_result.json
+      - name: Callback
+        if: always()
         run: |
-          curl -s -X POST "https://bsj.appssign.cc/api/tasks/${{ inputs.task_id }}/callback" \
-            -H "Content-Type: application/json" \
-            -d "{\"status\":\"completed\",\"result\":\"Uploaded to App Store Connect\"}"
-
-      - name: Notify failure
-        if: failure()
-        run: |
-          ERR_MSG="Upload failed"
-          if [ -f upload_error.txt ]; then ERR_MSG=$(cat upload_error.txt); fi
-          if [ -z "$ERR_MSG" ] && [ -f upload_result.json ]; then
-            python3 << "PYEOF"
-          import json
-          d = json.load(open("upload_result.json"))
-          errs = d.get("product-errors", d.get("errors", []))
-          if errs:
-              print(errs[0].get("message", "Upload failed"))
+          cat > callback.py << 'PYEOF'
+          import json, subprocess, sys, os
+          task_id = sys.argv[1]
+          url = f'https://bsj.appssign.cc/api/tasks/{task_id}/callback'
+          if os.path.exists('upload_result.json'):
+              try:
+                  d = json.load(open('upload_result.json'))
+                  sc = d.get('statusCode', 'unknown')
+                  if str(sc) == '0':
+                      payload = json.dumps({'status': 'completed', 'result': 'Upload OK'})
+                      subprocess.run(['curl', '-s', '-X', 'POST', url, '-H', 'Content-Type: application/json', '-d', payload])
+                      sys.exit(0)
+                  errs = d.get('product-errors', d.get('errors', []))
+                  msg = errs[0].get('message', str(errs[0])) if errs else d.get('statusMessage', str(d))
+              except Exception as e:
+                  msg = str(e)
           else:
-              print(d.get("statusMessage", "Upload failed"))
+              msg = 'upload_result.json not found'
+          payload = json.dumps({'status': 'failed', 'error': str(msg)[:500]})
+          subprocess.run(['curl', '-s', '-X', 'POST', url, '-H', 'Content-Type: application/json', '-d', payload])
           PYEOF
-          fi
-          JSON=$(python3 -c "import json,sys; print(json.dumps({status:failed,error:Apple:  + sys.argv[1]}))" "$ERR_MSG")
-          curl -s -X POST "https://bsj.appssign.cc/api/tasks/${{ inputs.task_id }}/callback" -H "Content-Type: application/json" -d "$JSON"
+          python3 callback.py ${{ inputs.task_id }}
