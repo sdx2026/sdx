@@ -66,14 +66,14 @@ jobs:
           security import cert.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
           security set-key-partition-list -S apple-tool:,apple: -s -k temp123 build.keychain
           # 查出分发证书的 SHA-1 身份
-          security find-identity -v -p codesigning build.keychain | grep "Apple Distribution" | head -1 | awk '{print $2}' > SIGN_IDENTITY
+          security find-identity -v -p codesigning build.keychain | grep -E "Apple Distribution|iPhone Distribution" | head -1 | awk '{print $2}' > SIGN_IDENTITY
           echo "签名身份: $(cat SIGN_IDENTITY)"
 
       - name: ✍️ 重签名
         run: |
           SIGN_ID=$(cat SIGN_IDENTITY)
           if [ -z "$SIGN_ID" ]; then
-            echo "❌ 未找到 Apple Distribution 签名身份"
+            echo "❌ 未找到分发证书签名身份"
             security find-identity -v -p codesigning build.keychain
             exit 1
           fi
@@ -84,19 +84,19 @@ jobs:
           security cms -D -i profile.mobileprovision > profile.plist
           /usr/libexec/PlistBuddy -x -c "Print Entitlements" profile.plist > entitlements.plist
           # 修改 Bundle ID
-          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${{ inputs.bundle_id }}" "$APP/Info.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${{ inputs.bundle_id }}" "$APP/Info.plist"
           # 覆盖版本号
           if [ -n "${{ inputs.override_version }}" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.override_version }}" "$APP/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString ${{ inputs.override_version }}" "$APP/Info.plist"
           fi
           # 覆盖构建号
           if [ -n "${{ inputs.override_build }}" ]; then
-            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.override_build }}" "$APP/Info.plist" 2>/dev/null || true
+            /usr/libexec/PlistBuddy -c "Set :CFBundleVersion ${{ inputs.override_build }}" "$APP/Info.plist"
           fi
           # 签名 Frameworks 和 PlugIns
           for fw in "$APP/Frameworks/"*.framework "$APP/PlugIns/"*.appex; do
             [ -d "$fw" ] || continue
-            /usr/bin/codesign --force --sign "$SIGN_ID" --timestamp=none "$fw" 2>/dev/null || true
+            /usr/bin/codesign --force --sign "$SIGN_ID" --timestamp=none "$fw"
           done
           # 用导入的分发证书签名主 App
           /usr/bin/codesign --force --sign "$SIGN_ID" --entitlements entitlements.plist --timestamp=none "$APP"
@@ -115,7 +115,7 @@ jobs:
       - name: 🧹 清理钥匙串
         if: always()
         run: |
-          security delete-keychain build.keychain 2>/dev/null || true
+          security delete-keychain build.keychain
 
       - name: 📢 通知服务器 - 成功
         if: success()
