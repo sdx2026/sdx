@@ -253,10 +253,25 @@ async function parseFile(e) {
     fd.append('ipa_file', file);
     const div = document.getElementById('parseResult');
     div.style.display = 'block';
-    div.innerHTML = '<strong>📦 解析中...</strong>';
+    div.innerHTML = '<strong>📦 上传并解析中 0%...</strong>';
     try {
-        const resp = await fetch('/api/ipa/parse', { method: 'POST', body: fd });
-        const data = await resp.json();
+        // Use XHR for upload progress tracking
+        const data = await new Promise((resolve, reject) => {
+            const xhr = new XMLHttpRequest();
+            xhr.upload.addEventListener('progress', function(ev) {
+                if (ev.lengthComputable) {
+                    const pct = Math.round(ev.loaded / ev.total * 100);
+                    div.innerHTML = '<strong>📦 上传中 ' + pct + '%...</strong>';
+                }
+            });
+            xhr.addEventListener('load', function() {
+                try { resolve(JSON.parse(xhr.responseText)); }
+                catch(e) { reject(e); }
+            });
+            xhr.addEventListener('error', function() { reject(new Error('Upload failed')); });
+            xhr.open('POST', '/api/ipa/parse');
+            xhr.send(fd);
+        });
         if (data.success) {
             div.innerHTML = '<strong>📦 ' + data.name + '</strong> v' + data.version + ' (Build: ' + (data.build || '-') + ') <span class="mono">(' + data.bundle_id + ')</span> | ' + data.file_size;
             document.getElementById('overrideVersion').value = data.version || '';
