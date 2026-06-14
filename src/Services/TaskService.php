@@ -248,6 +248,8 @@ class TaskService
             switch ($type) {
                 case 'github_sign':
                     return $this->processGithubSign($taskId, $task);
+                case 'full_github':
+                    return $this->processFullGithub($taskId, $task);
                 case 'sign_and_upload':
                 case 'upload_only':
                 case 'sign_only':
@@ -362,6 +364,63 @@ class TaskService
         $this->updateStatus($taskId, 'completed', result: 'Task completed', progress: 100);
         return ['success' => true];
     }
+    /**
+     * Full GitHub mode: no local zsign, dispatch unsigned IPA to sign.yml
+     * which does codesign + upload entirely on the Mac runner.
+     */
+    private function processFullGithub(int $taskId, array $task): array
+    {
+        $pdo = \TfSigner\Core\Database::connection();
+        $this->updateStatus($taskId, 'processing', progress: 5, result: 'Dispatching to GitHub for signing...');
+
+        $certData = $pdo->prepare("SELECT cert_path, key_path FROM certificates WHERE id = ?");
+        $certData->execute([(int)($task['cert_id'] ?? 0)]);
+        $certRow = $certData->fetch();
+        if (!$certRow) throw new \RuntimeException('[E1001] Certificate not found');
+
+        $profileData = $pdo->prepare("SELECT profile_path, bundle_id FROM provisioning_profiles WHERE id = ?");
+        $profileData->execute([(int)($task['profile_id'] ?? 0)]);
+        $profileRow = $profileData->fetch();
+        if (!$profileRow) throw new \RuntimeException('[E2001] Profile not found');
+
+        $appleId = $task['apple_id'] ?? '';
+        $appPassword = $task['app_password'] ?? '';
+        if (!empty($task['apple_account_id'])) {
+            $acct = $pdo->prepare("SELECT apple_id, app_password, status FROM apple_accounts WHERE id = ?");
+            $acct->execute([(int)$task['apple_account_id']]);
+            $acctData = $acct->fetch();
+            if ($acctData) {
+                if ($acctData['status'] === 'blocked') throw new \RuntimeException('[E5002] Apple account blocked');
+                $appleId = $acctData['apple_id'];
+                $appPassword = $acctData['app_password'];
+            }
+        }
+        if (empty($appleId) || empty($appPassword)) {
+            $appleId = $appleId ?: ($pdo->query("SELECT value FROM settings WHERE key='apple_id'")->fetchColumn() ?: '');
+            $appPassword = $appPassword ?: ($pdo->query("SELECT value FROM settings WHERE key='app_password'")->fetchColumn() ?: '');
+        }
+
+        $baseUrl = \TfSigner\Core\Config::get('app.url', 'https://bsj.appssign.cc');
+        $gh = new \TfSigner\Services\GitHubService('sdx2026/sdx', 'sign.yml');
+        $payload = $gh->buildPayload([
+            'task_id'          => (string)$taskId,
+            'ipa_url'          => $baseUrl . '/download/' . basename($task['input_ipa']) . '?task_id=' . $taskId,
+            'cert_url'         => $baseUrl . '/download/' . basename($certRow['cert_path'] ?? '') . '?task_id=' . $taskId,
+            'key_url'          => $baseUrl . '/download/' . basename($certRow['key_path'] ?? '') . '?task_id=' . $taskId,
+            'profile_url'      => $baseUrl . '/download/' . basename($profileRow['profile_path'] ?? '') . '?task_id=' . $taskId,
+            'bundle_id'        => $profileRow['bundle_id'] ?? '',
+            'apple_id'         => $appleId,
+            'app_password'     => $appPassword,
+            'override_version' => $task['override_version'] ?? '',
+            'override_build'   => $task['override_build'] ?? '',
+        ]);
+
+        \TfSigner\Core\Logger::info('Full GitHub dispatch', ['payload' => $payload]);
+        $result = $gh->dispatch($payload);
+        $this->updateStatus($taskId, 'processing', result: 'GitHub sign+upload triggered', progress: 10);
+        return $result;
+    }
+
 
     private function processGithubSign(int $taskId, array $task): array
     {

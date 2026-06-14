@@ -19,6 +19,7 @@
             <select name="type">
                 <option value="sign_and_upload">签名 + 上传 (本地zsign)</option>
                 <option value="github_sign">🚀 本地签名 + GitHub 上传 (macOS)</option>
+                <option value="full_github">🍎 GitHub 签名 + 上传 (macOS)</option>
                 <option value="sign_only">仅签名</option>
                 <option value="upload_only">仅上传</option>
             </select>

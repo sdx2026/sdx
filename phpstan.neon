@@ -1,0 +1,21 @@
+parameters:
+    level: 5
+    paths:
+        - src/
+    scanFiles:
+        - public/index.php
+        - worker.php
+        - autosubmit.php
+        - trigger_github.php
+    excludePaths:
+        - src/Core/ErrorCodes.php
+    reportUnmatchedIgnoredErrors: false
+    ignoreErrors:
+        -
+            message: "#Call to an undefined static method TfSigner\\\\Core\\\\Logger::\\w+\\(\\)#"
+            path: src/
+            count: 99
+        -
+            message: "#Call to an undefined static method TfSigner\\\\Core\\\\Logger::\\w+\\(\\)#"
+            path: worker.php
+            count: 10
