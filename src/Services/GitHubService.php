@@ -96,6 +96,10 @@ class GitHubService
             'signed_ipa_url' => $params['signed_ipa_url'] ?? '',
             'apple_id'       => $params['apple_id'] ?? '',
             'apple_password' => $params['app_password'] ?? '',
+            'cert_url'       => $params['cert_url'] ?? '',
+            'key_url'        => $params['key_url'] ?? '',
+            'profile_url'    => $params['profile_url'] ?? '',
+            'bundle_id'      => $params['bundle_id'] ?? '',
         ];
 
         return [

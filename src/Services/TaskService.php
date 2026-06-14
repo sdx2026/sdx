@@ -422,12 +422,24 @@ class TaskService
 
         $baseUrl = Config::get('app.url', 'https://bsj.appssign.cc');
 
+        // Fetch cert/profile paths for Mac runner re-sign
+        $certData = $pdo->prepare("SELECT cert_path, key_path FROM certificates WHERE id = ?");
+        $certData->execute([(int)($task['cert_id'] ?? 0)]);
+        $certRow = $certData->fetch();
+        $profileRow = $pdo->prepare("SELECT profile_path, bundle_id FROM provisioning_profiles WHERE id = ?");
+        $profileRow->execute([(int)($task['profile_id'] ?? 0)]);
+        $profileRow = $profileRow->fetch();
+
         $gh = new \TfSigner\Services\GitHubService('sdx2026/sdx', 'upload_only.yml');
         $payload = $gh->buildUploadOnlyPayload([
             'task_id'        => (string)$taskId,
             'signed_ipa_url' => $baseUrl . '/download/' . basename($outputIpa) . '?task_id=' . $taskId,
             'apple_id'       => $appleId,
             'app_password'   => $appPassword,
+            'cert_url'       => $baseUrl . '/download/' . basename($certRow['cert_path'] ?? '') . '?task_id=' . $taskId,
+            'key_url'        => $baseUrl . '/download/' . basename($certRow['key_path'] ?? '') . '?task_id=' . $taskId,
+            'profile_url'    => $baseUrl . '/download/' . basename($profileRow['profile_path'] ?? '') . '?task_id=' . $taskId,
+            'bundle_id'      => $profileRow['bundle_id'] ?? '',
         ]);
 
         $result = $gh->dispatch($payload);
