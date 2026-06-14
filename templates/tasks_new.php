@@ -26,7 +26,7 @@
 
         <div class="form-group">
             <label>IPA 文件 * <span class="text-muted">(可选多个文件批量上传)</span></label>
-            <input type="file" name="ipa_files[]" id="ipaFiles" accept=".ipa" multiple style="display:none;">
+            <input type="file" name="ipa_files[]" id="ipaFiles" accept=".ipa" multiple style="display:none;" disabled>
             <input type="file" name="ipa_file" id="ipaFileSingle" accept=".ipa">
             <div class="parse-result" id="parseResult" style="margin-top:8px;padding:8px;background:var(--surface2);border-radius:var(--radius);display:none;"></div>
         </div>
@@ -223,13 +223,13 @@ document.getElementById('batchMode').addEventListener('change', function() {
     if (this.checked) {
         document.getElementById('ipaFiles').style.display = 'block';
         document.getElementById('ipaFileSingle').style.display = 'none';
-        document.getElementById('ipaFiles').setAttribute('required', 'required');
-        document.getElementById('ipaFileSingle').removeAttribute('required');
+        document.getElementById('ipaFiles').removeAttribute('disabled'); document.getElementById('ipaFileSingle').setAttribute('disabled', 'disabled');
+        document.getElementById('ipaFileSingle').removeAttribute('disabled');
     } else {
         document.getElementById('ipaFiles').style.display = 'none';
         document.getElementById('ipaFileSingle').style.display = 'block';
-        document.getElementById('ipaFileSingle').setAttribute('required', 'required');
-        document.getElementById('ipaFiles').removeAttribute('required');
+        document.getElementById('ipaFileSingle').removeAttribute('disabled'); document.getElementById('ipaFiles').setAttribute('disabled', 'disabled');
+        document.getElementById('ipaFiles').removeAttribute('disabled');
     }
 });
 
@@ -285,7 +285,7 @@ async function parseFile(e) {
             div.innerHTML = '<strong>❌ 解析失败:</strong> ' + (data.error || '未知');
         }
     } catch(e) {
-        div.innerHTML = '<strong>❌ 网络错误</strong>';
+        div.innerHTML = '<strong>❌ 上传失败，请刷新重试</strong>';
     }
 }
 
