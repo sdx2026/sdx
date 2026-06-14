@@ -21,7 +21,6 @@ jobs:
           ls -lh signed.ipa
 
       - name: Download cert/profile and re-sign with codesign
-        if: inputs.cert_url != ''
         run: |
           echo 'Downloading cert/key/profile...'
           curl -fsSLo cert.pem "${{ inputs.cert_url }}" || { echo 'Cert download failed'; exit 1; }
