@@ -2,16 +2,42 @@ name: TF Upload to App Store
 on:
   workflow_dispatch:
     inputs:
-      task_id: {description: Task ID, required: true}
-      signed_ipa_url: {description: Signed IPA URL, required: true}
-      apple_id: {description: Apple ID, required: true}
-      apple_password: {description: App Password, required: true}
-      cert_url: {description: Certificate URL, required: false, default: ""}
-      key_url: {description: Private Key URL, required: false, default: ""}
-      profile_url: {description: Profile URL, required: false, default: ""}
-      bundle_id: {description: Bundle ID, required: false, default: ""}
-      callback_url: {description: Callback URL, required: false, default: ""}
-      callback_token: {description: Callback auth token, required: false, default: ""}
+      task_id:
+        description: Task ID
+        required: true
+      signed_ipa_url:
+        description: Signed IPA URL
+        required: true
+      apple_id:
+        description: Apple ID
+        required: true
+      apple_password:
+        description: App Password
+        required: true
+      cert_url:
+        description: Certificate URL
+        required: false
+        default: ""
+      key_url:
+        description: Private Key URL
+        required: false
+        default: ""
+      profile_url:
+        description: Profile URL
+        required: false
+        default: ""
+      bundle_id:
+        description: Bundle ID
+        required: false
+        default: ""
+      callback_url:
+        description: Callback URL
+        required: false
+        default: ""
+      callback_token:
+        description: Callback auth token
+        required: false
+        default: ""
 jobs:
   upload:
     runs-on: [self-hosted, macOS]
@@ -23,35 +49,35 @@ jobs:
           ls -lh signed.ipa
       - name: Download cert/profile and re-sign with codesign
         run: |
-          if [ -n "${{ inputs.cert_url }}" ] && [ -n "${{ inputs.key_url }}" ]; then
-            echo "Downloading cert/key/profile..."
-            curl -fsSLo cert.pem "${{ inputs.cert_url }}" || { echo "Cert download failed"; exit 1; }
-            curl -fsSLo key.pem "${{ inputs.key_url }}" || { echo "Key download failed"; exit 1; }
-            curl -fsSLo profile.mobileprovision "${{ inputs.profile_url }}" || { echo "Profile download failed"; exit 1; }
-            echo "Creating P12..."
-            openssl pkcs12 -export -nomac -in cert.pem -inkey key.pem -out cert.p12 -passout pass:temp123
-            echo "Importing into keychain..."
-            security create-keychain -p temp123 build.keychain
-            security default-keychain -s build.keychain
-            security unlock-keychain -p temp123 build.keychain
-            security import cert.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
-            security set-key-partition-list -S apple-tool:,apple: -s -k temp123 build.keychain
-            SIGN_ID=$(security find-identity -v -p codesigning build.keychain | grep -E "Apple Distribution|iPhone Distribution" | head -1 | awk "{print \$2}")
-            if [ -z "$SIGN_ID" ]; then SIGN_ID=$(security find-identity -v -p codesigning build.keychain 2>&1 | grep -oE "iPhone Distribution: [^\"]+|Apple Distribution: [^\"]+" | head -1); fi
-            if [ -z "$SIGN_ID" ]; then echo "FATAL: No signing identity found"; exit 1; fi
-            echo "Sign identity: $SIGN_ID"
-            echo "Extracting IPA..."
-            rm -rf Payload && unzip -q signed.ipa
-            APP=$(ls -d Payload/*.app | head -1)
-            cp profile.mobileprovision "$APP/embedded.mobileprovision"
-            security cms -D -i profile.mobileprovision > profile.plist
-            /usr/libexec/PlistBuddy -x -c "Print Entitlements" profile.plist > entitlements.plist
-            if [ -n "${{ inputs.bundle_id }}" ]; then /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier ${{ inputs.bundle_id }}" "$APP/Info.plist"; fi
-            for fw in "$APP/Frameworks/"*.framework "$APP/PlugIns/"*.appex; do [ -d "$fw" ] && /usr/bin/codesign --force --sign "$SIGN_ID" --timestamp=none "$fw" || true; done
-            /usr/bin/codesign --force --sign "$SIGN_ID" --entitlements entitlements.plist --timestamp=none "$APP" || { echo "FAILED sign"; exit 1; }
-            /usr/bin/codesign -dvvv "$APP" 2>&1 || { echo "FAILED verify"; exit 1; }
-            rm -f signed.ipa && zip -qr signed.ipa Payload && ls -lh signed.ipa
-          fi
+          echo "Downloading cert/key/profile..."
+          curl -fsSLo cert.pem "${{ inputs.cert_url }}" || { echo "Cert download failed"; exit 1; }
+          curl -fsSLo key.pem "${{ inputs.key_url }}" || { echo "Key download failed"; exit 1; }
+          curl -fsSLo profile.mobileprovision "${{ inputs.profile_url }}" || { echo "Profile download failed"; exit 1; }
+          ls -lh cert.pem key.pem profile.mobileprovision
+          echo "Creating P12..."
+          openssl pkcs12 -export -nomac -in cert.pem -inkey key.pem -out cert.p12 -passout pass:temp123
+          echo "Importing into keychain..."
+          security create-keychain -p temp123 build.keychain
+          security default-keychain -s build.keychain
+          security unlock-keychain -p temp123 build.keychain
+          security import cert.p12 -k build.keychain -P temp123 -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k temp123 build.keychain
+          SIGN_ID=$(security find-identity -v -p codesigning build.keychain | grep -E "Apple Distribution|iPhone Distribution" | head -1 | awk "{print \$2}")
+          if [ -z "$SIGN_ID" ]; then SIGN_ID=$(security find-identity -v -p codesigning build.keychain 2>&1 | grep -oE "iPhone Distribution: [^\"]+|Apple Distribution: [^\"]+" | head -1); fi
+          if [ -z "$SIGN_ID" ]; then echo "FATAL: No signing identity found"; exit 1; fi
+          echo "Sign identity: $SIGN_ID"
+          echo "Extracting IPA..."
+          rm -rf Payload && unzip -q signed.ipa
+          APP=$(ls -d Payload/*.app | head -1)
+          cp profile.mobileprovision "$APP/embedded.mobileprovision"
+          security cms -D -i profile.mobileprovision > profile.plist
+          /usr/libexec/PlistBuddy -x -c "Print Entitlements" profile.plist > entitlements.plist
+          BID="${{ inputs.bundle_id }}"
+          if [ -n "$BID" ]; then /usr/libexec/PlistBuddy -c "Set :CFBundleIdentifier $BID" "$APP/Info.plist"; fi
+          for fw in "$APP/Frameworks/"*.framework "$APP/PlugIns/"*.appex; do [ -d "$fw" ] && /usr/bin/codesign --force --sign "$SIGN_ID" --timestamp=none "$fw" || true; done
+          /usr/bin/codesign --force --sign "$SIGN_ID" --entitlements entitlements.plist --timestamp=none "$APP" || { echo "FAILED sign"; exit 1; }
+          /usr/bin/codesign -dvvv "$APP" 2>&1 || { echo "FAILED verify"; exit 1; }
+          rm -f signed.ipa && zip -qr signed.ipa Payload && ls -lh signed.ipa
       - name: Cleanup keychain
         if: always()
         run: security delete-keychain build.keychain 2>/dev/null; true
@@ -65,36 +91,36 @@ jobs:
           CB_URL="${{ inputs.callback_url }}"
           CB_TOKEN="${{ inputs.callback_token }}"
           if [ -z "$CB_URL" ]; then echo "No callback URL, skipping"; exit 0; fi
-          cat > callback.py << 'PYEOF'
-import json, subprocess, sys, os
-task_id = sys.argv[1]
-cb_url = sys.argv[2]
-cb_token = sys.argv[3]
-msg = "Upload failed"
-if os.path.exists("upload_result.json"):
-    raw = open("upload_result.json").read()
-    idx = raw.find("{")
-    if idx >= 0:
-        try:
-            d = json.loads(raw[idx:])
-            sc = d.get("statusCode", "unknown")
-            if str(sc) == "0":
-                payload = json.dumps({"status": "completed", "result": "Upload to App Store OK"})
-                headers = ["-H", "Content-Type: application/json"]
-                if cb_token: headers += ["-H", f"X-Callback-Token: {cb_token}"]
-                subprocess.run(["curl", "-s", "-X", "POST", cb_url] + headers + ["-d", payload])
-                sys.exit(0)
-            errs = d.get("product-errors", d.get("errors", []))
-            msg = errs[0].get("message", str(errs[0])) if errs else d.get("statusMessage", str(d))
-        except:
-            for line in raw.split("\n"):
-                if "ERROR:" in line: msg = line.split("ERROR:", 1)[-1].strip()[:500]; break
-    else:
-        for line in raw.split("\n"):
-            if "ERROR:" in line or "error:" in line.lower(): msg = line.strip()[:500]; break
-payload = json.dumps({"status": "failed", "error": str(msg)[:500]})
-headers = ["-H", "Content-Type: application/json"]
-if cb_token: headers += ["-H", f"X-Callback-Token: {cb_token}"]
-subprocess.run(["curl", "-s", "-X", "POST", cb_url] + headers + ["-d", payload])
-PYEOF
+          cat > callback.py << "PYEOF"
+          import json, subprocess, sys, os
+          task_id = sys.argv[1]
+          cb_url = sys.argv[2]
+          cb_token = sys.argv[3]
+          msg = "Upload failed"
+          if os.path.exists("upload_result.json"):
+              raw = open("upload_result.json").read()
+              idx = raw.find("{")
+              if idx >= 0:
+                  try:
+                      d = json.loads(raw[idx:])
+                      sc = d.get("statusCode", "unknown")
+                      if str(sc) == "0":
+                          payload = json.dumps({"status": "completed", "result": "Upload to App Store OK"})
+                          headers = ["-H", "Content-Type: application/json"]
+                          if cb_token: headers += ["-H", f"X-Callback-Token: {cb_token}"]
+                          subprocess.run(["curl", "-s", "-X", "POST", cb_url] + headers + ["-d", payload])
+                          sys.exit(0)
+                      errs = d.get("product-errors", d.get("errors", []))
+                      msg = errs[0].get("message", str(errs[0])) if errs else d.get("statusMessage", str(d))
+                  except:
+                      for line in raw.split("\n"):
+                          if "ERROR:" in line: msg = line.split("ERROR:", 1)[-1].strip()[:500]; break
+              else:
+                  for line in raw.split("\n"):
+                      if "ERROR:" in line or "error:" in line.lower(): msg = line.strip()[:500]; break
+          payload = json.dumps({"status": "failed", "error": str(msg)[:500]})
+          headers = ["-H", "Content-Type: application/json"]
+          if cb_token: headers += ["-H", f"X-Callback-Token: {cb_token}"]
+          subprocess.run(["curl", "-s", "-X", "POST", cb_url] + headers + ["-d", payload])
+          PYEOF
           python3 callback.py ${{ inputs.task_id }} "$CB_URL" "$CB_TOKEN"
