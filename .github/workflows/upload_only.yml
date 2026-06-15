@@ -9,13 +9,11 @@ on:
         description: Signed IPA URL
         required: true
       apple_id:
-        required: false
         description: Apple ID
-        required: true
-      apple_password:
         required: false
+      apple_password:
         description: App Password
-        required: true
+        required: false
       cert_url:
         description: Certificate URL
         required: false
