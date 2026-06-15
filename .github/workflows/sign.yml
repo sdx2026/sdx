@@ -130,3 +130,12 @@ jobs:
           curl -s -X POST "https://bsj.appssign.cc/api/tasks/${{ inputs.task_id }}/callback" \
             -H "Content-Type: application/json" \
             -d '{"status":"failed","error":"GitHub Actions failed - check Actions logs on github.com"}'
+      - name: Callback
+        if: always()
+        run: |
+          CB_URL="${{ inputs.callback_url }}"
+          CB_TOKEN="${{ inputs.callback_token }}"
+          if [ -z "$CB_URL" ]; then exit 0; fi
+          STATUS="${{ job.status == 'success' && 'completed' || 'failed' }}"
+          curl -s -X POST "$CB_URL" -H "Content-Type: application/json" -H "X-Callback-Token: $CB_TOKEN" -d "{\"status\":\"$STATUS\",\"result\":\"GitHub Actions finished\"}"
+
